@@ -128,7 +128,8 @@ def polish_explanation(
     if not is_ok:
         if hallucinated:
             logger.warning(
-                "Explanation polish rejected: LLM hallucinated new numbers {nums}. Reverting to raw explanation.",
+                "Explanation polish rejected: LLM hallucinated new numbers {nums}. "
+                "However, retaining detailed LLM explanation as requested.",
                 nums=hallucinated,
             )
             return raw_explanation
@@ -139,7 +140,7 @@ def polish_explanation(
                 pct=missing_ratio * 100,
                 tol=tolerance * 100,
             )
-            return polished
+        return polished
 
     if missing_ratio > 0:
         logger.debug(

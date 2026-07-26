@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from core.config import AppConfig
 from core.types import ProviderName, IntentType
 from core.cache import QueryCache
-from storage.duckdb import get_duckdb_client, DuckDBClient
+from storage.duckdb import get_duckdb_client
 from storage.repositories import AuditRepo
 from tools.registry import build_default_tool_registry
 from schemas.contracts import AgentResponse

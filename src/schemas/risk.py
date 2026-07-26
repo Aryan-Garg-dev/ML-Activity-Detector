@@ -12,6 +12,7 @@ class RiskAssessment(BaseModel):
     risk_level: RiskLevel
     escalation_action: EscalationAction
     triggered_signals: list[str] = Field(default_factory=list)
+    feature_contributions: dict[str, float] = Field(default_factory=dict)
 
 # Flagged entity summary item included in agent response
 class FlaggedItem(BaseModel):

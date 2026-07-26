@@ -1,5 +1,6 @@
 """AgentState definition for LangGraph state machine."""
 
+import operator
 from typing import TypedDict, Any, Annotated
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -25,7 +26,7 @@ class AgentState(TypedDict, total=False):
     query_spec: QuerySpec | None
     execution_plan: ExecutionPlan | None
     current_step_index: int
-    tool_results: list[ToolResult]
+    tool_results: Annotated[list[ToolResult], operator.add]
     data_query_results: dict[str, Any]
     eda_results: dict[str, Any]
     feature_results: dict[str, Any]

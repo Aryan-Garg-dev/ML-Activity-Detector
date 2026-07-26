@@ -144,6 +144,7 @@ class _RunContext:
     __slots__ = (
         "query_id",
         "step",
+        "completed_tools",
         "detection_results",
         "feature_results",
         "scoring_results",
@@ -155,6 +156,7 @@ class _RunContext:
     def __init__(self) -> None:
         self.query_id = "q_unknown"
         self.step = 0
+        self.completed_tools: list[ToolName] = []
         self.detection_results: dict[str, Any] = {}
         self.feature_results: dict[str, Any] = {}
         self.scoring_results: dict[str, Any] = {}
@@ -165,6 +167,7 @@ class _RunContext:
     def reset(self, query_id: str) -> None:
         self.query_id = query_id
         self.step = 0
+        self.completed_tools = []
         self.detection_results = {}
         self.feature_results = {}
         self.scoring_results = {}
@@ -240,10 +243,11 @@ def _make_lc_tools(
         feat_result = registry.validate_and_call(
             ToolName.FEATURE_ENGINEERING,
             {"feature_family": "all", "window_days": window_days},
-            config, db_client, ctx.query_id, feat_step,
+            config, db_client, ctx.query_id, feat_step, ctx.completed_tools,
         )
         if feat_result.status == "ok":
             ctx.feature_results = feat_result.data
+            ctx.completed_tools.append(ToolName.FEATURE_ENGINEERING)
         else:
             errors.append(f"feature_engineering: {feat_result.error_summary}")
             logger.warning("Feature engineering failed in detect tool: {err}", err=feat_result.error_summary)
@@ -253,10 +257,11 @@ def _make_lc_tools(
         det_result = registry.validate_and_call(
             ToolName.DETECTION,
             {"pattern_type": pattern_type, "window_days": window_days},
-            config, db_client, ctx.query_id, det_step,
+            config, db_client, ctx.query_id, det_step, ctx.completed_tools,
         )
         if det_result.status == "ok":
             ctx.detection_results = det_result.data
+            ctx.completed_tools.append(ToolName.DETECTION)
         else:
             errors.append(f"detection: {det_result.error_summary}")
             logger.warning("Detection failed in detect tool: {err}", err=det_result.error_summary)
@@ -269,10 +274,11 @@ def _make_lc_tools(
                 "detection_results": ctx.detection_results,
                 "query_id": ctx.query_id,
             },
-            config, db_client, ctx.query_id, score_step,
+            config, db_client, ctx.query_id, score_step, ctx.completed_tools,
         )
         if score_result.status == "ok":
             ctx.scoring_results = score_result.data
+            ctx.completed_tools.append(ToolName.SCORING)
         else:
             errors.append(f"scoring: {score_result.error_summary}")
 
@@ -322,10 +328,11 @@ def _make_lc_tools(
                 "having": having or {},
                 "limit": limit,
             },
-            config, db_client, ctx.query_id, step_id,
+            config, db_client, ctx.query_id, step_id, ctx.completed_tools,
         )
         if result.status == "ok":
             ctx.data_query_results = result.data
+            ctx.completed_tools.append(ToolName.DATA_QUERY)
         return result.model_dump_json()
 
     # --- analyze_dataset ---
@@ -334,10 +341,11 @@ def _make_lc_tools(
         result = registry.validate_and_call(
             ToolName.EDA,
             {"eda_type": eda_type},
-            config, db_client, ctx.query_id, step_id,
+            config, db_client, ctx.query_id, step_id, ctx.completed_tools,
         )
         if result.status == "ok":
             ctx.eda_results = result.data
+            ctx.completed_tools.append(ToolName.EDA)
         return result.model_dump_json()
 
     # --- lookup_account ---
@@ -346,10 +354,11 @@ def _make_lc_tools(
         result = registry.validate_and_call(
             ToolName.ENTITY_LOOKUP,
             {"account_id": account_id},
-            config, db_client, ctx.query_id, step_id,
+            config, db_client, ctx.query_id, step_id, ctx.completed_tools,
         )
         if result.status == "ok":
             ctx.entity_lookup_results = result.data
+            ctx.completed_tools.append(ToolName.ENTITY_LOOKUP)
         return result.model_dump_json()
 
     return [
@@ -565,7 +574,14 @@ def build_tool_calling_graph(
 
     # --- parse_intent node ---
     def _parse_intent(state: AgentState) -> dict[str, Any]:
-        result = parse_intent_node(state, config, resolved_llm)
+        try:
+            result = parse_intent_node(state, config, resolved_llm)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            err_msg = str(e) or type(e).__name__
+            logger.error("parse_intent_node failed: {err}\n{tb}", err=err_msg, tb=tb)
+            raise RuntimeError(f"parse_intent failed: {err_msg}") from e
         qid = result.get("query_id", state.get("query_id", "q_unknown"))
         ctx.reset(query_id=qid)
         # Write audit event so every query has at least one audit row (Core Design Rule 8)
@@ -679,19 +695,27 @@ def build_tool_calling_graph(
             return "fallback_fixed_flow"
         return "explain"
 
-    # --- edge after parse_intent: skip loop if already rejected ---
-    def _after_parse(state: AgentState) -> Literal["tool_agent", "report"]:
+    # --- edge after parse_intent: skip loop if already rejected or clarify if ambiguous ---
+    def _after_parse(state: AgentState) -> Literal["tool_agent", "report", "clarify"]:
         if state.get("agent_response") is not None:
             return "report"
+            
+        query_spec = state.get("query_spec")
+        if query_spec and query_spec.is_ambiguous and query_spec.confidence_score < 0.40:
+            return "clarify"
+            
         return "tool_agent"
 
     # Register nodes
+    from agent.nodes import clarify_node, verify_node
     workflow.add_node("parse_intent", _parse_intent)
     workflow.add_node("tool_agent", _tool_agent)
     workflow.add_node("tools", tool_node)
     workflow.add_node("extract_state", _extract_state)
     workflow.add_node("fallback_fixed_flow", _fallback_fixed_flow)
+    workflow.add_node("clarify", lambda state: clarify_node(state, config))
     workflow.add_node("explain", _explain)
+    workflow.add_node("verify", verify_node)
     workflow.add_node("report", _report)
 
     # Wire edges
@@ -699,7 +723,7 @@ def build_tool_calling_graph(
     workflow.add_conditional_edges(
         "parse_intent",
         _after_parse,
-        {"tool_agent": "tool_agent", "report": "report"},
+        {"tool_agent": "tool_agent", "report": "report", "clarify": "clarify"},
     )
     workflow.add_conditional_edges(
         "tool_agent",
@@ -713,9 +737,13 @@ def build_tool_calling_graph(
         {"explain": "explain", "fallback_fixed_flow": "fallback_fixed_flow"},
     )
     workflow.add_edge("fallback_fixed_flow", "explain")
-    workflow.add_edge("explain", "report")
+    workflow.add_edge("clarify", "report")
+    workflow.add_edge("explain", "verify")
+    workflow.add_edge("verify", "report")
     workflow.add_edge("report", END)
 
-    app = workflow.compile()
+    from langgraph.checkpoint.memory import MemorySaver
+    memory = MemorySaver()
+    app = workflow.compile(checkpointer=memory)
     logger.info("Compiled tool-calling LangGraph agent graph with fallback successfully")
     return app

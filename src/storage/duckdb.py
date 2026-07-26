@@ -75,6 +75,24 @@ class DuckDBClient:
     def close(self) -> None:
         self.conn.close()
 
+    def ingest_csv(self, table_name: str, file_path: str) -> int:
+        """Truncate the table and load data from a CSV file. Returns the number of rows inserted."""
+        if self.read_only:
+            logger.error("Cannot ingest CSV on read-only connection")
+            return 0
+        
+        # We assume the schema already exists, so we TRUNCATE the table and then copy
+        try:
+            self.conn.execute(f"TRUNCATE {table_name}")
+            self.conn.execute(f"COPY {table_name} FROM '{file_path}' (AUTO_DETECT TRUE)")
+            result = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+            count = result[0] if result else 0
+            logger.info("Ingested {count} rows into {table_name} from {file_path}", count=count, table_name=table_name, file_path=file_path)
+            return count
+        except Exception as e:
+            logger.error("Failed to ingest CSV into {table_name}: {err}", table_name=table_name, err=str(e))
+            raise
+
 # Factory function creating initialized DuckDB client from AppConfig
 def get_duckdb_client(config: AppConfig | None = None, read_only: bool = False) -> DuckDBClient:
     db_path = config.db_path if config else "activity.duckdb"

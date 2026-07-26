@@ -15,7 +15,7 @@ from storage.duckdb import DuckDBClient
 from tools.features.tool import FeatureInput, execute_feature_engineering
 from tools.detection.rules import evaluate_account_rules
 from tools.detection.ml_scorer import fit_predict_ml_anomalies
-from tools.detection.ensemble import combine_signals
+from tools.detection.ensemble import get_ensemble_strategy
 
 
 class DetectionInput(BaseModel):
@@ -117,8 +117,9 @@ def execute_detection(
 
         ml_results = fit_predict_ml_anomalies(features_dict, config, background_features=bg_features_list)
 
-        # Step 4: Combine rule flags + ML scores via OR-gate ensemble
-        ensemble_results = combine_signals(rule_results, ml_results, config, pattern_type=str(input.pattern_type))
+        # Step 4: Combine rule flags + ML scores via configured ensemble strategy
+        strategy = get_ensemble_strategy(config.ensemble_strategy)
+        ensemble_results = strategy.combine_signals(rule_results, ml_results, config, pattern_type=str(input.pattern_type))
 
         flagged_results = {acc: info for acc, info in ensemble_results.items() if info["is_flagged"]}
         flagged_count = len(flagged_results)

@@ -75,7 +75,7 @@ def run_workflow_query(test_setup, raw_query: str, query_spec_json: str):
         llm_client=llm_client,
     )
 
-    final_state = graph.invoke({"raw_query": raw_query})
+    final_state = graph.invoke({"raw_query": raw_query}, config={"configurable": {"thread_id": "test"}})
     return final_state
 
 

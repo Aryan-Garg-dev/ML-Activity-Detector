@@ -18,6 +18,7 @@ class AppConfig(BaseModel):
     temperature: float = 0.0
     max_retries: int = 3
     timeout_seconds: float = 30.0
+    ensemble_strategy: str = "or_gate"
 
     def get_api_key(self) -> str | None:
         """Dynamically resolve API key from explicit setting, provider defaults, or designated env var."""

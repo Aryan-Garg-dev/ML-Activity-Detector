@@ -7,6 +7,7 @@ from loguru import logger
 
 from core.config import AppConfig
 from core.types import ToolName, IntentType, PatternType
+from core.cache import artefact_cache
 from schemas.contracts import QuerySpec, ExecutionPlan, ToolResult, AgentResponse
 from schemas.audit import AuditEvent
 from storage.duckdb import DuckDBClient
@@ -403,21 +404,41 @@ def execute_step_node(
         )
         return {"current_step_index": step_index + 1}
 
-    result = registry.validate_and_call(
-        name=step.tool_name,
-        args={
-            **step.args,
-            **(
-                {"detection_results": state.get("detection_results", {}), "query_id": query_id}
-                if step.tool_name == ToolName.SCORING
-                else {}
-            ),
-        },
-        config=config,
-        db_client=db_client,
-        query_id=query_id,
-        step_id=step.step_id,
-    )
+    completed_tools = [ToolName(t["tool_name"]) for t in tool_results if "tool_name" in t] if tool_results else []
+
+    tool_args = {
+        **step.args,
+        **(
+            {"detection_results": state.get("detection_results", {}), "query_id": query_id}
+            if step.tool_name == ToolName.SCORING
+            else {}
+        ),
+    }
+
+    tool_name_str = step.tool_name.value if hasattr(step.tool_name, "value") else str(step.tool_name)
+    cached_data = artefact_cache.get(tool_name_str, tool_args)
+    
+    if cached_data is not None:
+        result = ToolResult(
+            tool_name=step.tool_name,
+            step_id=step.step_id,
+            status="ok",
+            data=cached_data,
+            rows_count=len(cached_data) if isinstance(cached_data, dict) else 0
+        )
+        logger.info("Using cached result for tool {tool_name}", tool_name=tool_name_str)
+    else:
+        result = registry.validate_and_call(
+            name=step.tool_name,
+            args=tool_args,
+            config=config,
+            db_client=db_client,
+            query_id=query_id,
+            step_id=step.step_id,
+            completed_tools=completed_tools,
+        )
+        if result.status == "ok":
+            artefact_cache.put(tool_name_str, tool_args, result.data)
 
     tool_results.append(result)
     updates: dict[str, Any] = {
@@ -555,6 +576,32 @@ def explain_node(
     }
 
 
+def verify_node(state: AgentState) -> dict[str, Any]:
+    """Node: Verify AgentState consistency before final reporting.
+    
+    Checks that intermediate results (like tool_results, risk_assessments)
+    are properly formatted and catches missing data early.
+    """
+    query_id = state.get("query_id", "q_unknown")
+    logger.info("Executing verify_node for [{query_id}]", query_id=query_id)
+    
+    # 1. Check if tool_results is a list
+    tool_results = state.get("tool_results", [])
+    if not isinstance(tool_results, list):
+        logger.error("tool_results is not a list in state")
+        return {"error": "Invalid state: tool_results must be a list"}
+        
+    # 2. Check risk assessments if scoring ran
+    if "scoring_results" in state and state["scoring_results"]:
+        risk_assessments = state.get("risk_assessments", [])
+        if not isinstance(risk_assessments, list):
+            logger.error("risk_assessments is not a list in state")
+            return {"error": "Invalid state: risk_assessments must be a list"}
+            
+    # 3. Validation passed
+    return {}
+
+
 def report_node(
     state: AgentState,
     config: AppConfig,
@@ -563,7 +610,7 @@ def report_node(
 ) -> dict[str, Any]:
     """Node: Run ReportingTool to assemble final AgentResponse."""
     query_id = state.get("query_id", "q_unknown")
-    tool_results = list(state.get("tool_results", []))
+    tool_results = list(state.get("tool_results") or [])
     # execution_plan is only populated by the legacy planner graph; None in tool-calling graph
     plan = state.get("execution_plan")
     # query_spec is always set by parse_intent_node
@@ -572,6 +619,13 @@ def report_node(
     step_id = len(tool_results) + 1
 
     logger.info("Executing report_node for [{query_id}]", query_id=query_id)
+
+    # Short-circuit: rejection and clarification paths already build a complete AgentResponse
+    # in parse_intent_node / clarify_node. Avoid re-running the reporting tool unnecessarily.
+    existing_response = state.get("agent_response")
+    if existing_response is not None:
+        logger.info("report_node: agent_response already set (rejection/clarification path), skipping tool call.")
+        return {"agent_response": existing_response}
 
     # Derive tools_invoked for execution_summary from ToolResults (legacy) or messages (tool-calling)
     if tool_results:
@@ -614,14 +668,25 @@ def report_node(
     tool_results.append(rep_result)
 
     agent_response_dict = rep_result.data.get("agent_response", {})
+    
+    from schemas.contracts import ExecutionContext
+    execution_context = ExecutionContext(
+        run_id=query_id,
+        total_duration_ms=sum(t.duration_ms for t in tool_results),
+        tools_executed=tools_invoked_list,
+        errors=[t.error_summary for t in tool_results if getattr(t, "error_summary", None)]
+    )
+    
     if isinstance(agent_response_dict, dict) and agent_response_dict:
         agent_response = AgentResponse(**agent_response_dict)
+        agent_response.execution_context = execution_context
     else:
         agent_response = AgentResponse(
             query_id=query_id,
             raw_query=state.get("raw_query", ""),
             intent=query_spec.intent_type,
             explanation=explanation,
+            execution_context=execution_context,
         )
 
     return {
@@ -647,4 +712,33 @@ def replan_node(state: AgentState, planner: Planner) -> dict[str, Any]:
         "execution_plan": new_plan,
         "current_step_index": 0,
         "replan_count": replan_count + 1,
+    }
+
+
+def clarify_node(state: AgentState, config: AppConfig) -> dict[str, Any]:
+    """Node: Handle ambiguous or low-confidence queries by returning a clarification prompt."""
+    query_id = state.get("query_id", f"q_{uuid.uuid4().hex[:8]}")
+    query_spec = state.get("query_spec")
+
+    if not query_spec:
+        clarification_msg = "I could not understand your query. Please rephrase it with more specific AML terminology."
+        intent = IntentType.PATTERN_SEARCH
+    else:
+        logger.info("Executing clarify_node for query [{query_id}] (confidence: {conf:.2f})", query_id=query_id, conf=query_spec.confidence_score)
+        missing = ", ".join(query_spec.missing_entities) if query_spec.missing_entities else "key details"
+        clarification_msg = f"I am not confident in understanding your query (confidence {query_spec.confidence_score:.2f}). Please clarify the following: {missing}."
+        intent = query_spec.intent_type
+
+    rejection_response = AgentResponse(
+        query_id=query_id,
+        raw_query=state.get("raw_query", ""),
+        intent=intent,
+        execution_summary={"status": "clarification_required", "reason": clarification_msg, "tools_invoked": [], "tools_skipped": []},
+        explanation=clarification_msg,
+    )
+    
+    return {
+        "agent_response": rejection_response,
+        "current_step_index": 999,  # Signal to skip all steps
+        "error": clarification_msg,
     }

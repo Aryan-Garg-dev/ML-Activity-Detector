@@ -4,6 +4,8 @@ An autonomous AI-powered agent for Anti-Money Laundering (AML) suspicious activi
 
 → **Full architecture and sample workflow:** [docs/project_overview.md](./docs/project_overview.md)
 
+<img width="1837" height="842" alt="image" src="https://github.com/user-attachments/assets/4cc2dde9-4a3c-4f95-8d4b-7d0468a4851b" />
+
 ---
 
 ## Quickstart

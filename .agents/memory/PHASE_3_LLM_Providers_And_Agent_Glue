@@ -1,0 +1,51 @@
+# Phase 3 — LLM Provider Layer & LangGraph Agent Integration
+
+## Summary
+Implemented Phase 3 of the system: Provider-agnostic LLM Layer, Intent Parsing Prompts, Explanation Polish with Numeric Drift Check, Agent Guardrails, Tier 1 & Tier 2 Planner, LangGraph Execution Graph, and Adversarial Test Suite. Verified live integration with local LLM (LM Studio).
+
+## Date: 2026-07-25T19:38:00+05:30
+
+## Files Created & Modified
+
+| File | Type | Change Summary |
+|------|------|----------------|
+| `src/core/types.py` | Config | Added `LMSTUDIO` and `OPENAI` to `ProviderName` enum. |
+| `src/core/config.py` | Config | Added `get_api_key()` and `get_base_url()` helpers for dynamic provider resolution. |
+| `.env.example` | Config | Annotated with variables for `GROQ`, `OPENROUTER`, `OLLAMA`, `LMSTUDIO`, and `OPENAI`. |
+| `src/schemas/contracts.py` | Contracts | Added resilient `@field_validator` hooks for case-insensitive enum normalization (`QuerySpec`, `PlanStep`). |
+| `src/llm/providers/base.py` | LLM | Abstract `BaseProviderAdapter` interface. |
+| `src/llm/providers/groq.py` | LLM | `GroqProviderAdapter` using `ChatGroq`. |
+| `src/llm/providers/ollama.py` | LLM | `OllamaProviderAdapter` using `ChatOllama`. |
+| `src/llm/providers/openrouter.py` | LLM | `OpenRouterProviderAdapter` using `ChatOpenAI`. |
+| `src/llm/providers/lmstudio.py` | LLM | `LMStudioProviderAdapter` using `ChatOpenAI` for local endpoints. |
+| `src/llm/providers/openai.py` | LLM | `OpenAIProviderAdapter` using `ChatOpenAI`. |
+| `src/llm/client.py` | LLM | `LLMClient` dispatcher with `invoke`, `structured_output`, and `extract_json_substring` regex extractor. |
+| `src/llm/prompts/intent_parser.py` | Prompts | System prompt, few-shot examples, and `parse_query_intent()` function. |
+| `src/llm/prompts/explanation_polish.py` | Prompts | `polish_explanation()` with `verify_numeric_preservation()` drift check. |
+| `src/agent/state.py` | Agent | `AgentState` TypedDict for LangGraph state machine. |
+| `src/agent/guardrails.py` | Agent | `validate_execution_plan()` (step cap $\le 8$, whitelist, schema validation) & `audit_write_plan_start()` (pre-execution audit log). |
+| `src/agent/planner.py` | Agent | `Planner`: Tier 1 Decision Table (deterministic intent $\times$ pattern templates) & Tier 2 LLM Fallback Planner. |
+| `src/agent/nodes.py` | Agent | LangGraph execution node functions (`parse_intent_node`, `plan_node`, `execute_step_node`, `explain_node`, `report_node`, `replan_node`). |
+| `src/agent/graph.py` | Agent | `build_agent_graph()` compiling `StateGraph` with conditional routing & replan loop. |
+| `tests/test_llm_client.py` | Tests | Unit tests for adapter resolution & client invocation. |
+| `tests/test_planner.py` | Tests | Golden tests asserting exact `tools_invoked` / `tools_skipped` for 3 canonical queries. |
+| `tests/test_guardrails.py` | Tests | Unit tests for step limits, tool validation, and pre-execution audit logging (with `save_audit_event` mock fix). |
+
+| `tests/test_agent_graph.py` | Tests | Integration tests for compiled LangGraph agent graph. |
+| `tests/test_llm_adversarial.py` | Tests | Stress tests for malformed JSON, preambles, enum case normalization, network errors, and numeric drift rejection. |
+| `scripts/verify_local_llm.py` | Script | Verification script testing live connection to LM Studio (`mistralai/ministral-3-3b`) and full agent workflow execution. |
+| `docs/LLM_LOCAL_INTEGRATION_GUIDE.md` | Docs | Comprehensive setup guide for local LLM integration and testing. |
+
+## Verification Results
+- **Live Local LLM Verification**: Tested live connection to LM Studio (`mistralai/ministral-3-3b` at `http://localhost:1234/v1`).
+  - Direct Invocation: `LOCAL_LLM_ONLINE` ✅
+  - Intent Parsing: `intent=pattern_search, pattern=structuring` ✅
+  - LangGraph Execution: Executed `[feature_engineering, detection, scoring, explanation, reporting]` and built valid `AgentResponse` ✅
+- **Automated Test Suite**: **175 tests passed in 23.09s** (100% clean).
+
+## Tools & Skills Used
+- `LangChain` (`langchain-core`, `langchain-openai`, `langchain-groq`, `langchain-ollama`) — model adapters & structured output.
+- `LangGraph` — StateGraph workflow orchestration with conditional edges and single replan loop.
+- `Pydantic` v2 — schema contracts and field validators.
+- `DuckDB` — connection, repository queries, and audit logging.
+- `pytest` — full test suite execution & adversarial testing.

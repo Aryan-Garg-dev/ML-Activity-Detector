@@ -1,0 +1,39 @@
+# Phase 2 — Updated Review Fixes & Final Verification
+
+## Summary
+Executed fixes for all 3 remaining findings (2 Major + 1 Minor) identified in the updated Phase 2 code review (`.agents/reviews/PHASE_2/review.md`).
+The fixes address executed detector confidence semantics for targeted queries, real population background baseline matrix for PyOD ML scoring, and non-destructive feature cache merging.
+
+## Date: 2026-07-25T19:00:00+05:30
+
+## Files Modified & Summary of Fixes
+
+| File | Fix Type | Change Description |
+|------|----------|--------------------|
+| `src/tools/detection/ensemble.py` | Major 1 | Updated `combine_signals` to accept `pattern_type`. Dynamically sets evaluated detector families to 2 for targeted pattern queries (1 pattern rule family + 1 ML family), enabling 100% consensus queries to reach `confidence = 1.0`. |
+| `src/tools/detection/tool.py` | Major 1 | Passed `input.pattern_type` from `DetectionTool` into `combine_signals`. |
+| `src/tools/detection/ml_scorer.py` | Major 2 | Removed `_generate_background_baseline` synthetic random generator. Replaced with real empirical population background matrix (zero-anomaly quiet profile reference) and optional real background feature vectors. |
+| `src/tools/features/tool.py` | Minor 1 | Updated `tx_df.empty` early return path in `FeatureTool` to merge `cached_results` with empty feature dicts (`combined_fsets = dict(cached_results)`), ensuring partial cache hits are never lost. |
+| `tests/test_tools/test_detection.py` | Tests | Added `test_ensemble_confidence_targeted_query` proving targeted queries reach 1.0 confidence when executed detectors agree. |
+| `tests/test_tools/test_features.py` | Tests | Added `test_execute_feature_engineering_partial_cache_empty_slice` proving partial cache hits preserve cached accounts when uncached accounts have zero transactions. |
+
+## Test Results
+- **Total tests: 131 (all passing)**
+  - Phase 1 Foundation & Storage: 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests ✅
+  - EDA Tool: 19 tests ✅
+  - Feature Engineering Tool: 12 tests ✅
+  - Detection Tool: 14 tests ✅
+  - Scoring Tool: 6 tests ✅
+  - Explanation Tool: 11 tests ✅
+  - Reporting Tool & End-to-End Pipeline: 6 tests ✅
+
+## Key Accomplishments
+1. **Accurate Confidence Semantics**: Targeted pattern queries calculate confidence relative to detectors actually run, allowing 1.0 confidence on full consensus.
+2. **Synthetic Data Elimination**: Zero synthetic random generators in `ml_scorer.py`. Anomaly scores derived cleanly from scaled empirical matrices.
+3. **Data Integrity**: Feature cache lookups never discard previously computed features on quiet window slices.
+
+## Skills & Tools Used
+- `PyOD` / `scikit-learn` — Isolation Forest, LOF, RobustScaler
+- `pytest` — full test suite execution & regression verification

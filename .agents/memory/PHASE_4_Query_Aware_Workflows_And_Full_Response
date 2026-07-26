@@ -1,0 +1,40 @@
+# Phase 4 — Query-Aware Workflows, Structured Output & FastAPI Service
+
+## Summary
+Completed Build Phase 4:
+1. Updated `FlaggedItem` schema and `ReportingTool` to fetch and populate full structured `account_record` (`AccountRecord`) and `recent_transactions` (`list[TransactionRecord]`) domain models for every flagged suspicious item.
+2. Implemented all 5 dynamic routing paths (`pattern_search`, `aggregation_query`, `entity_lookup`, `broad_eda`, `risk_scoring_batch`) with exact tool selection and skipping.
+3. Created `src/api/main.py` offering a production-grade FastAPI REST service with `POST /query`, `GET /health`, `GET /audit/{query_id}`, and interactive OpenAPI / Swagger UI at `/docs` and ReDoc at `/redoc`.
+4. Updated `main.py` root CLI entry point with command-line arguments (`--query`, `--provider`, `--model`, `--format json|summary`) and terminal formatted output.
+5. Implemented aggressive workflow unit & integration test suites in `tests/test_phase4_workflows.py` and `tests/test_api.py`.
+
+## Date: 2026-07-25T20:25:00+05:30
+
+## Files Created & Modified
+
+| File | Type | Change Summary |
+|------|------|----------------|
+| `src/schemas/risk.py` | Schema | Added `account_record` and `recent_transactions` fields to `FlaggedItem`. |
+| `src/tools/entity_lookup/tool.py` | Tool | Created `EntityLookupTool` handling single account ID lookups, alerts, and cached risk assessments. |
+| `src/tools/registry.py` | Registry | Added `build_default_tool_registry()` registering all 8 tools including `ENTITY_LOOKUP`. |
+| `src/tools/reporting/tool.py` | Tool | Updated `ReportingTool` to populate structured account and transaction domain models for each flagged item. |
+| `src/agent/state.py` | Agent | Added `entity_lookup_results` to `AgentState` TypedDict for LangGraph state persistence. |
+| `src/agent/nodes.py` | Agent | Updated `execute_step_node` and `report_node` to pass `entity_lookup_results` cleanly. |
+
+| `src/api/main.py` | FastAPI | REST application providing `/query`, `/health`, `/audit/{query_id}`, and Swagger docs at `/docs`. |
+| `src/api/__init__.py` | FastAPI | Package init exposing FastAPI app instance. |
+| `main.py` | CLI | Full-featured CLI entry point with `--query`, `--provider`, `--model`, `--format` flags. |
+| `tests/test_phase4_workflows.py` | Tests | Aggressive workflow test suite covering all 5 routing paths and AML query patterns. |
+| `tests/test_api.py` | Tests | FastAPI integration tests verifying `/docs`, `/health`, `/query`, and `/audit/{query_id}`. |
+| `.agents/context/progress-tracker.md` | Context | Updated progress tracker checking off all Phase 4 items. |
+
+## Verification Results
+- **Full Test Suite**: **163 / 163 tests passed in 23.36s (100% green)**.
+- **Phase 4 Workflows**: All 5 workflow routing paths verified (`pattern_search`, `aggregation_query`, `entity_lookup`, `broad_eda`, `risk_scoring_batch`).
+- **CLI & FastAPI**: Verified CLI execution `uv run python main.py --query "Find structuring patterns in the last 30 days"` returning formatted response with account details and recent transaction lists.
+
+## Tools & Skills Used
+- `FastAPI` & `uvicorn` & `httpx` — REST endpoints, Swagger UI documentation, and `TestClient` API testing.
+- `Pydantic` v2 — schema contracts, json_schema_extra examples, and domain serialization.
+- `DuckDB` — connection management, schema initialization, and audit log querying.
+- `pytest` — comprehensive workflow & API unit/integration tests.

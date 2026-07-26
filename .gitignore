@@ -1,0 +1,35 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# DuckDB database files — binary, should not be tracked
+*.duckdb
+*.duckdb.wal
+
+# Logs
+logs/
+*.log
+
+# Generated data and model cache
+data/processed/
+.cache/
+fastembed_cache/
+
+# Environment files with secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+
+.pytest_cache
+.venv
+data
+docs

@@ -1,0 +1,58 @@
+# AML Risk Scoring, Detection Rules, and Ensemble Thresholds
+# All values are loaded by AppConfig and referenced via config. Never hardcode these.
+#
+# Changes to this file affect detection sensitivity, scoring, and escalation decisions.
+# Refer to the architecture.md ADR-3 for ensemble design rationale.
+
+# -------------------------------------------------------------------
+# Structuring detection window (AML PATTERN: R_STRUCT_*)
+# -------------------------------------------------------------------
+# The maximum amount that qualifies as "near-threshold" structuring behavior.
+# Any transaction BELOW this amount is considered potentially structured.
+# Safe range: 5,000 – 12,000. Regulatory standard is 10,000 (BSA/AML).
+reporting_threshold: 10000.0   # USD. BSA/AML CTR reporting threshold.
+
+# How many days back to look when counting near-threshold transactions.
+# Shorter windows = more sensitive to recent spikes; longer = catches gradual accumulation.
+# Safe range: 7 – 90. Default: 14 (two-week rolling window).
+structuring_window_days: 14
+
+# Minimum number of near-threshold transactions required to trigger R_STRUCT_01.
+# Lower = more alerts (higher recall, more false positives).
+# Safe range: 2 – 10. Default: 3.
+structuring_min_txn_count: 3
+
+# -------------------------------------------------------------------
+# Risk Bands — map composite score (0–100) to RiskLevel enum
+# -------------------------------------------------------------------
+# composite_score = (w_rule * rule_ratio) + (w_ml * ml_score) + (w_context * context_mult)
+# Scores below low_max → LOW (MONITOR), below med_max → MEDIUM (REVIEW), else HIGH (REPORT)
+risk_bands:
+  low: [0, 39]       # Score 0–39: LOW risk — log and monitor
+  medium: [40, 74]   # Score 40–74: MEDIUM risk — assign to human reviewer
+  high: [75, 100]    # Score 75–100: HIGH risk — SAR filing recommended
+
+# -------------------------------------------------------------------
+# Ensemble Weights — control rule vs. ML contribution to composite score
+# -------------------------------------------------------------------
+# w_rule: weight of the rule-engine score (deterministic, explainable)
+# w_ml:   weight of the ML ensemble score (IForest + LOF + HBOS combined percentile)
+# w_context: weight of context multiplier (multi-signal consensus booster)
+# Must sum to 1.0 for normalized composite score in [0, 1].
+ensemble_weights:
+  w_rule: 0.50      # 50%: rules are interpretable and auditable — keep dominant
+  w_ml: 0.35        # 35%: ML catches novel patterns not covered by rules
+  w_context: 0.15   # 15%: boosts confidence when multiple detectors agree
+
+# -------------------------------------------------------------------
+# ML Detector Settings — IForest, LOF, HBOS (PyOD)
+# -------------------------------------------------------------------
+# Fraction of the population expected to be anomalous (unsupervised contamination param).
+# Affects IForest and LOF decision boundary thresholds.
+# Safe range: 0.01 (1%) – 0.15 (15%). Lower = fewer ML flags (higher precision).
+ml_contamination: 0.05   # 5% of accounts assumed anomalous
+
+# Only accounts in the TOP N% by ML anomaly score are flagged as ML_ANOMALOUS.
+# At 95.0, only the top 5% of accounts by ensemble ML score get ML_IFOREST/ML_LOF/ML_HBOS signals.
+# Raise to flag more accounts; lower to restrict to extreme outliers only.
+ml_percentile_cutoff: 95.0   # Top 5% of ML anomaly scores are flagged

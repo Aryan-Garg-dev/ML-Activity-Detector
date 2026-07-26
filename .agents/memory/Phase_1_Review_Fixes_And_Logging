@@ -1,0 +1,28 @@
+# Phase 1 Review Fixes And Logging Enhancements
+
+**Updation Date:** 2026-07-25
+
+## Review Findings Addressed & Changes Made
+1. **Environment Variable Precedence in `AppConfig.load()`**:
+   - Updated `src/core/config.py` to parse environment variables (from `.env` or `os.environ`) and override matching YAML properties.
+2. **Logging Toggle, Specificity & Structured Format**:
+   - Updated `configs/logging.yaml` and `AppConfig` to include `log_to_console`, `log_to_file`, `console_log_level`, and `file_log_level`.
+   - Updated `src/core/logging.py` so that if `log_to_file` is set to `False`, console logging automatically acts as a safety fallback.
+   - Configured structured file logging to emit `tool_execution.jsonl` using Loguru's `logger.bind(**payload)` so fields are natively stored as structured JSON.
+3. **Duplicate Script Removal**:
+   - Deleted redundant script `scripts/load_duckdb.py` to consolidate ingestion in `scripts/load_data.py`.
+4. **Comprehensive Test Suite & Exit Criteria Verification**:
+   - Expanded `tests/test_config.py` to test environment variable overrides over YAML, custom YAML parsing, console log fallbacks, and structured JSONL log creation.
+   - Expanded `tests/test_storage.py` to test all repositories (`AccountRepo`, `TransactionRepo`, `AlertRepo`, `AuditRepo`, `FeatureRepo`), sentinel alert_id conversion (`ALERT_ID = -1` -> `None`), and real dataset ingestion.
+
+## Files Modified / Created / Deleted
+- `configs/logging.yaml` [MODIFIED]
+- `src/core/config.py` [MODIFIED]
+- `src/core/logging.py` [MODIFIED]
+- `scripts/load_duckdb.py` [DELETED]
+- `scripts/load_data.py` [MODIFIED]
+- `tests/test_config.py` [MODIFIED]
+- `tests/test_storage.py` [MODIFIED]
+
+## Verification
+- Ran `uv run pytest`: **10 tests passed** in 5.75s across `test_config.py`, `test_models.py`, and `test_storage.py`.

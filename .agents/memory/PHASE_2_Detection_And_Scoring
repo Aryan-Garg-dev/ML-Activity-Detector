@@ -1,0 +1,45 @@
+# Phase 2 — Detection Tool & Scoring Tool
+
+## Summary
+Implemented the Detection Tool (`DetectionTool`) and Scoring Tool (`ScoringTool`) for the AML suspicious activity detection architecture.
+The Detection Tool integrates a pattern-specific heuristic rule engine, a PyOD unsupervised ML anomaly scorer (IForest + LOF with RobustScaler feature normalization), and an OR-gate ensemble combiner (ADR-3) with confidence metric calculations.
+The Scoring Tool computes deterministic composite risk scores (0-100), classifies entities into `RiskLevel` bands (`LOW`, `MEDIUM`, `HIGH`), assigns `EscalationAction` recommendations (`MONITOR`, `REVIEW`, `ESCALATE`), and persists `RiskAssessment` domain records into the DuckDB database.
+
+## Date: 2026-07-25T18:27:00+05:30
+
+## Files Created / Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/tools/detection/__init__.py` | Created | Package init for detection tool |
+| `src/tools/detection/rules.py` | Created | Pattern-specific AML rule functions for structuring, smurfing, layering, rapid cash-out, velocity |
+| `src/tools/detection/ml_scorer.py` | Created | PyOD Isolation Forest (`IForest`) and Local Outlier Factor (`LOF`) scorer with `RobustScaler` and percentile normalization |
+| `src/tools/detection/ensemble.py` | Created | OR-gate ensemble combiner (ADR-3), triggered signals collector, confidence consensus metric |
+| `src/tools/detection/tool.py` | Created | `DetectionInput` schema and `execute_detection()` tool entry point |
+| `src/tools/scoring/__init__.py` | Created | Package init for scoring tool |
+| `src/tools/scoring/tool.py` | Created | `ScoringInput` schema, deterministic composite score formula, risk band mapping, and DuckDB `risk_assessments` table persistence |
+| `tests/test_tools/test_detection.py` | Created | 11 tests: rule engine tests, PyOD ML scorer tests, ensemble tests, LangChain export, real DuckDB integration |
+| `tests/test_tools/test_scoring.py` | Created | 6 tests: risk level classification, score formula, DuckDB persistence, LangChain export, real DuckDB integration |
+| `.agents/context/progress-tracker.md` | Modified | Marked Detection Tool and Scoring Tool items as `[x]` complete |
+
+## Test Results
+- **Total tests: 110 (all passing)**
+  - Phase 1 Foundation & Storage: 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests ✅
+  - EDA Tool: 19 tests ✅
+  - Feature Engineering Tool: 11 tests ✅
+  - Detection Tool: 11 tests ✅
+  - Scoring Tool: 6 tests ✅
+
+## Key Architectural Decisions
+1. **Hybrid OR-Gate Ensemble (ADR-3)**: Combines deterministic rule flags with PyOD unsupervised ML anomaly scores. High rule flags OR ML score above 95th percentile triggers detection flag.
+2. **PyOD Distance Detector Feature Scaling**: Applied `RobustScaler` before running `LOF` and `IForest` to prevent features with wide value ranges from distorting distance metrics (od-expert pitfall 1).
+3. **Deterministic Scoring Formula**: Purely mathematical composite score ($0 - 100$) using weights from `configs/thresholds.yaml` ($w_{\text{rule}}=0.50, w_{\text{ml}}=0.35, w_{\text{context}}=0.15$). The LLM never computes risk scores (ADR-5).
+4. **LangChain & LangGraph Compatibility**: Both `DetectionTool` and `ScoringTool` export as LangChain `StructuredTool` instances via `to_langchain_tool()`.
+
+## Skills & Tools Used
+- `od-expert` — PyOD anomaly detection patterns, feature scaling, percentile rank normalization
+- `scikit-learn` — `RobustScaler` preprocessing
+- `PyOD` — `IForest` and `LOF` unsupervised anomaly models
+- `pytest` — automated testing & verification

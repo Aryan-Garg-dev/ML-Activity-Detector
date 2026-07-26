@@ -1,0 +1,46 @@
+# Phase 2 — Review Fixes & Improvements
+
+## Summary
+Executed fixes for all 7 findings (6 Major + 1 Minor) identified in the Phase 2 code review (`.agents/reviews/PHASE_2/review.md`).
+The fixes address error propagation, ensemble confidence semantics, single-entity PyOD ML scoring, DuckDB SQL filter pushdown performance, explanation polish guardrail validation, reporting tool invocation tracking, and Matplotlib object-oriented chart styling.
+
+## Date: 2026-07-25T18:52:00+05:30
+
+## Files Modified & Summary of Fixes
+
+| File | Fix Type | Change Description |
+|------|----------|--------------------|
+| `src/tools/detection/tool.py` | Major 1 | Added explicit error propagation if `FeatureTool` fails (`feat_res.status != "ok"`), returning `status="error"` instead of hiding failures under `status="ok"`. |
+| `src/tools/detection/ensemble.py` | Major 2 | Updated ensemble confidence math to count distinct detector families agreed divided by total detector families evaluated (`distinct_detector_families / 6.0`), preventing multiple flags in one rule family from artificially inflating confidence. |
+| `src/tools/detection/ml_scorer.py` | Major 3 | Added background population baseline sampling (`_generate_background_baseline`) when scoring target batches ($N < 20$), enabling single-entity lookups ("Is customer 4521 suspicious?") to fit PyOD `IForest` and `LOF` and return relative anomaly scores instead of 0.0 scores. |
+| `src/tools/features/tool.py` | Major 4 | Replaced `SELECT * FROM transactions` full table scans with SQL-level filter pushdown: `WHERE timestamp >= cutoff` and `WHERE (sender_account_id IN (...) OR receiver_account_id IN (...))`, ensuring on-demand minimal data materialization from DuckDB. |
+| `src/tools/explanation/tool.py` | Major 5 | Fully wired `enable_llm_polish` path to execute phrasing polish (`_apply_phrasing_polish`) and validate output against `verify_numeric_preservation()`, falling back to grounded text on numeric drift. |
+| `src/tools/reporting/tool.py` | Major 6 | Updated tool invocation tracking to use `is not None` checks instead of boolean truthiness, and added support for explicit `tools_invoked` input override. |
+| `src/tools/eda/charts.py` | Minor 1 | Removed global `plt.rcParams.update(...)` mutation in favor of per-figure object-oriented styling (`_style_figure(fig, axes)`). |
+| `tests/test_tools/test_detection.py` | Tests | Added unit tests for feature error propagation, detector family confidence consensus, and single-entity PyOD ML lookup. |
+| `tests/test_tools/test_explanation.py` | Tests | Added test for `enable_llm_polish=True` with numeric preservation guardrail validation. |
+| `tests/test_tools/test_reporting.py` | Tests | Added tests for empty result payload tracking (`{}`) and explicit `tools_invoked` input override. |
+
+## Test Results
+- **Total tests: 129 (all passing)**
+  - Phase 1 Foundation & Storage: 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests ✅
+  - EDA Tool: 19 tests ✅
+  - Feature Engineering Tool: 11 tests ✅
+  - Detection Tool: 13 tests ✅
+  - Scoring Tool: 6 tests ✅
+  - Explanation Tool: 11 tests ✅
+  - Reporting Tool & End-to-End Pipeline: 6 tests ✅
+
+## Key Architectural Achievements
+1. **Audit Integrity**: Upstream tool failures are no longer masked as `status="ok"`.
+2. **Robust Anomaly Scoring for Entity Lookups**: Single customer lookups score against background population baselines using PyOD `IForest` + `LOF`.
+3. **High-Performance Feature Pushdown**: SQL filters executed directly in DuckDB columnar C++ engine before pandas materialization.
+4. **Guaranteed Numeric Preservation**: Downstream text polish passes regex token verification (`verify_numeric_preservation`).
+
+## Skills & Tools Used
+- `PyOD` / `scikit-learn` — Isolation Forest, LOF, RobustScaler, baseline population sampling
+- `DuckDB` — SQL filter pushdown & parameterized queries
+- `Matplotlib` — object-oriented figure & axes styling
+- `pytest` — automated regression test suite

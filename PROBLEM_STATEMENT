@@ -1,0 +1,75 @@
+AI-Powered Suspicious Activity Detection
+Business Summary:
+
+Financial institutions globally are mandated by regulatory bodies (FinCEN, FATF, local authorities) to implement robust Anti-Money Laundering (AML) compliance programs. However, traditional rule-based systems generate excessive false positives, overwhelming compliance teams and increasing operational costs. Meanwhile, sophisticated money laundering techniques—including structuring , smurfing, and layering evade conventional detection methods.
+
+The challenge is to build an intelligent, autonomous agent that can learn from transaction patterns, identify suspicious behaviours, and provide explainable risk assessments with actionable escalation recommendations. Such an agent would reduce false positives, improve detection accuracy, and enable compliance teams to focus on genuine threats rather than manual rule tuning.
+
+Objective:
+
+Participants are required to design and implement an AI-powered agent that:
+
+Performs automated exploratory data analysis (EDA) on transaction and customer data to understand baseline behavior
+Detects anomalous transaction patterns indicative of money laundering (example – structuring/smurfing)
+Applies anomaly detection (e.g., any ML-based approach, rule based or Hybrid)
+Generates a risk score or flag per transaction/customer
+Provides a explanation for why a transaction is flagged as suspicious
+Recommends a basic escalation action (monitor / flag for review / report)
+
+Requirements:
+
+Participants must build an agent-driven system and showcase an implementation with regards to the objective:
+
+The agent must accept a user instruction or query (e.g., “Analyse this dataset for suspicious activity” or “Flag high-risk customers”) and autonomously orchestrate calls to internal components/tools to complete the task.
+
+Minimum Functional Requirements
+
+The agent must not follow a fixed sequential pipeline. Instead, it must parse the user’s natural language query, extract intent, filters, entities, and pattern types, and dynamically construct an execution plan — invoking only the tools necessary to answer that specific query. The examples below illustrate the expected adaptive behaviour:
+
+User Query
+
+Expected Agent Behaviour
+
+“Find structuring patterns in the last 30 days”
+
+Apply time filter first; invoke only structuring-focused feature engineering and anomaly detection; skip full EDA
+
+“Which customers made 10+ transactions under $10,000?”
+
+Run aggregation and threshold rule directly; ML anomaly detection is not required
+
+“Is customer ID 4521 suspicious?”
+
+Perform single-entity lookup; explain existing flags or compute risk on-demand for that customer only
+
+With that in mind, the agent must be capable of the following — invoked selectively based on query intent:
+
+Extract intent, filters (date range, segment, country, transaction type), and target AML pattern
+Build a dynamic execution plan that decides which tools to call, in what order, and on which subset; not every query needs every tool
+Load the dataset and apply only the preprocessing relevant to the query
+Run EDA selectively when broad exploration is needed; skip it for targeted or single-entity queries
+Create AML features on demand, such as transaction frequency, rolling sums, amount deviation, velocity, and rapid cash-out patterns
+Run anomaly or suspicious-pattern detection using ML, statistical, or rule-based methods on the filtered data
+Classify results as low, medium, or high-risk using context-appropriate thresholds
+Generate a human-readable explanation for each flag, tied to the query
+Recommend the next action: monitor, review, or report
+Return results in a structured format that is easy for a judge to inspect, including what the agent decided and why
+
+Expected Agent Architecture
+
+The solution should clearly show an agentic flow where the agent coordinates the following capabilities:
+
+EDA Tool: Performs exploratory data analysis, profiling, and visualization
+Feature Engineering Tool: Creates model-ready or rule-ready AML features
+Anomaly Detection Tool: Scores suspicious transactions or customers using ML, statistical methods, rules, or a hybrid approach
+Risk Classification Tool: Converts scores/signals into risk categories based on model output and/or business logic
+Explanation Component / Rule Layer: Generates concise natural language reasons for flags
+
+Recommended Output from the Agent
+
+A query-aware execution summary showing the user request, the filters/entities detected, and the tools the agent decided to invoke
+Top suspicious transactions or customers returned by the selected analysis path
+Risk level for each flagged item
+Explanation for each flag, tied to the original query intent and detected AML pattern
+Suggested escalation action such as monitor / review / report
+Supporting charts, tables, or metrics for reviewer confidence

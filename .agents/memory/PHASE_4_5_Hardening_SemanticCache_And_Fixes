@@ -1,0 +1,118 @@
+# Phase 4 & 5 — Hardening, Bug Fixes, Semantic Cache, and Documentation
+
+## Date: 2026-07-26
+
+---
+
+## Phase 4 Supplement — Bug Fixes Applied Post-Phase 4
+
+These fixes were identified during testing and user validation after Phase 4 was declared complete.
+
+### Bug Fix 1: Explainability — Missing Grounded Reasons for Flagged Accounts
+**Problem:** The explanation node was returning generic text without grounding in the user's original query context (filters, pattern type, amount thresholds).  
+**Fix:** Updated `explain_node` in `nodes.py` to build a `query_context` dict from the parsed `QuerySpec` and pass it into `ExplanationTool`. Template `_build_query_context_sentence()` now opens each explanation with a sentence tying the flag to the user's original query (e.g., "In response to your query for transactions exceeding $1,000, account 9998 was flagged.").
+
+### Bug Fix 2: API Response Bloat — Full Account/Transaction Dumps in Response
+**Problem:** `POST /query` was returning every account and transaction in the response body, making responses tens of MB for batch queries.  
+**Fix:** Implemented `AgentResponseSummary` (compact) vs `AgentResponse` (full). Default `/query` strips `account_record` and `recent_transactions` from flagged items. `?detailed=true` returns full records. `GET /report/{query_id}/download` returns full JSON/CSV report.
+
+### Bug Fix 3: DuckDB File Lock on Concurrent Test Runs
+**Problem:** `_duckdb.IOException` when test processes attempted concurrent write connections to `activity.duckdb`.  
+**Fix:** Added read-only mode fallback in `DuckDBClient`. If write connection fails with `IOException`, automatically opens in `read_only=True` mode. Feature engineering uses `ThreadPoolExecutor` for pure computation and sequential main-thread commits.
+
+### Bug Fix 4: FeatureTool Thread Safety (TransactionContext Error)
+**Problem:** `TransactionContext already active` errors when feature families ran in parallel threads and attempted concurrent DuckDB writes.  
+**Fix:** Refactored `FeatureTool` to compute all feature families in parallel workers (read-only), then merge results in the main thread and do a single sequential write-back.
+
+---
+
+## Phase 5 — Hardening & Review
+
+### 5.1 Test Suite
+**Deliverable:** Comprehensive test suite covering all public interfaces.
+
+| Test File | Coverage |
+|---|---|
+| `tests/test_tools/test_data_query.py` | All DataQueryTool query types, filters, edge cases |
+| `tests/test_tools/test_eda.py` | EDA profile generation, stat computation, chart output |
+| `tests/test_tools/test_features.py` | All 5 feature families, thread safety, caching |
+| `tests/test_tools/test_scoring.py` | Composite score bands, ensemble weights, edge cases |
+| `tests/test_guardrails.py` | Plan validation, off-topic rejection, step limits |
+| `tests/integration/test_end_to_end.py` | Full pipeline execution, 5 routing paths, cache hits |
+
+**Final result:** 304/304 tests passed.
+
+### 5.2 Semantic Cache — Embedding-Based Similarity
+**Problem:** TF-IDF semantic cache was rejecting similar queries like "Is there any suspicious activity in the records?" vs "Is there any suspicious activity?" because the threshold (0.92) was too strict and TF-IDF doesn't capture semantic meaning — "anomalous transactions" and "suspicious activity" score near-zero.
+
+**Fix:** Replaced TF-IDF-only similarity with a three-tier lookup chain:
+1. **Exact SHA-256 hash** (O(1), always active)
+2. **fastembed sentence embeddings** (`BAAI/bge-small-en-v1.5`, 33MB ONNX model, no PyTorch) — primary semantic similarity
+3. **TF-IDF** (sklearn) — fallback when fastembed model unavailable
+
+Also added AML-domain stopword normalization to `_normalize_query` so "in the records", "in the dataset", "please show me" don't create distinct cache entries.
+
+**Files:** `src/core/cache.py`  
+**Dependency added:** `fastembed==0.8.0`  
+**New config:** `semantic_cache_threshold: 0.78` (was 0.92)
+
+### 5.3 Explanation Polish — Tolerance-Based Drift Check
+**Problem:** The numeric preservation check was failing for virtually every polished explanation because it was binary (any missing number = fallback). LLMs frequently reformat "81.1 (composite score)" into "composite score: 81.1/100" — both retain the number but the token set differs. The binary check treated this as hallucination.
+
+Also: duplicate-looking log lines were caused by the replan loop calling `explain_node` twice.
+
+**Fix:** Replaced binary check with tolerance-based check in `_check_numeric_drift()`:
+- **Hallucinated numbers** (new values not in grounded text) → always hard FAIL + WARNING log
+- **Missing beyond tolerance** (>20% of grounded numbers dropped) → soft FAIL + INFO log
+- **Within tolerance** (≤20% missing) → ACCEPTED + DEBUG log
+
+**Files:** `src/llm/prompts/explanation_polish.py`  
+**New config:** `explanation_polish_tolerance: 0.20`, `explanation_polish_enabled: true`
+
+### 5.4 Hardcoded Values Removal
+All hardcoded runtime values moved to `AppConfig` and `configs/app.yaml`.
+
+| Previously Hardcoded | Location | Now Config Field |
+|---|---|---|
+| `top_n = 1` (entity lookup) | `nodes.py:469` | `config.explain_top_n_entity` |
+| `top_n = 5` (pattern search) | `nodes.py:473` | `config.explain_top_n_default` |
+| `top_n = 10` (batch) | `nodes.py:471` | `config.explain_top_n_batch` |
+| `days = 90` (between-query default) | `nodes.py:58` | `config.default_window_days` |
+| `raw_query[:80]` (truncation) | `templates.py:46` | `config.query_display_max_chars` |
+| `semantic_threshold = 0.92` | `cache.py:65` | `config.semantic_cache_threshold` |
+
+All fallback values are explicitly documented with inline comments: `# fallback: N`.
+
+### 5.5 New Config Fields Added
+All in `src/core/config.py` and `configs/app.yaml`:
+- `semantic_cache_threshold: 0.78`
+- `explain_top_n_entity: 1`
+- `explain_top_n_default: 5`
+- `explain_top_n_batch: 10`
+- `explanation_polish_enabled: true`
+- `explanation_polish_tolerance: 0.20`
+- `default_window_days: 90`
+- `query_display_max_chars: 80`
+
+---
+
+## Files Created / Modified
+
+| File | Change |
+|---|---|
+| `src/core/cache.py` | Rewrote: fastembed embeddings + TF-IDF fallback + stopword normalization |
+| `src/core/config.py` | Added 8 new config fields |
+| `configs/app.yaml` | Added all new fields with comments |
+| `src/llm/prompts/explanation_polish.py` | Replaced binary check with tolerance-based drift check |
+| `src/agent/nodes.py` | Removed all hardcoded values; threaded config through `_heuristic_query_spec`; added `query_display_max_chars` to `query_context` |
+| `src/tools/explanation/templates.py` | Config-driven query truncation via `query_context["query_display_max_chars"]` |
+| `docs/project_overview.md` | New — project explanation, architecture, and sample workflow |
+| `README.md` | Updated — quickstart, env setup, provider guide, example queries |
+
+## Dependencies Introduced
+- `fastembed==0.8.0` — ONNX-based sentence embeddings for semantic cache (`uv add fastembed`)
+
+## Architectural Decisions
+- **fastembed over sentence-transformers**: fastembed uses ONNX runtime (~50MB total) vs PyTorch-based sentence-transformers (~2GB with CUDA). Both produce equivalent embeddings for short AML query text. fastembed is the correct choice for a compliance service where lightweight deployment matters.
+- **Tolerance not threshold for drift check**: A threshold-based check (100% preservation required) is too strict for LLM text that legitimately reformats numeric context. A tolerance-based check (20% slack) allows professional prose while still catching hallucination.
+- **Stopword normalization for cache keys**: AML query filler words ("in the records", "please find", "show me") should not create distinct cache entries. Stopword stripping brings "Is there suspicious activity in the records?" and "Is there suspicious activity?" to the same normalized key before embedding.

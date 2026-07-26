@@ -1,0 +1,9 @@
+# Logging configuration for console and structured file output
+log_level: "INFO"
+console_log_level: "INFO"
+file_log_level: "DEBUG"
+log_to_console: true
+log_to_file: true
+log_dir: "logs"
+dev_mode: true
+log_format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"

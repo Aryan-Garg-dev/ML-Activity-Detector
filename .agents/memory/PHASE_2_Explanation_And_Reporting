@@ -1,0 +1,43 @@
+# Phase 2 — Explanation Tool, Reporting Tool & End-to-End Verification
+
+## Summary
+Completed Build Phase 2 by implementing the Explanation Tool (`ExplanationTool`), Reporting Tool (`ReportingTool`), and running complete verification across all tools.
+The Explanation Tool provides evidence-grounded pattern template generation with a regex numeric preservation guardrail (`verify_numeric_preservation`) to guarantee zero numeric drift in downstream explanations.
+The Reporting Tool assembles the canonical structured `AgentResponse` containing `query_id`, `raw_query`, `intent`, `execution_summary` (`tools_invoked`, `tools_skipped`, duration), `flagged_items` (`FlaggedItem`), supporting chart file paths, summary metrics, and executive summary narrative.
+An end-to-end multi-tool pipeline test (`test_end_to_end_tool_pipeline`) was executed verifying seamless sequential execution from Data Query through Reporting.
+
+## Date: 2026-07-25T18:34:00+05:30
+
+## Files Created / Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/tools/explanation/__init__.py` | Created | Package init for explanation tool |
+| `src/tools/explanation/templates.py` | Created | Grounded explanation templates for structuring, smurfing, layering, rapid cash-out, velocity, ML anomaly, and regex `verify_numeric_preservation` check |
+| `src/tools/explanation/tool.py` | Created | `ExplanationInput` schema and `execute_explanation()` tool entry point |
+| `src/tools/reporting/__init__.py` | Created | Package init for reporting tool |
+| `src/tools/reporting/tool.py` | Created | `ReportingInput` schema and `execute_reporting()` tool entry point assembling typed `AgentResponse` |
+| `tests/test_tools/test_explanation.py` | Created | 10 tests: template formatting, regex numeric preservation, tool execution, LangChain export |
+| `tests/test_tools/test_reporting.py` | Created | 4 tests: AgentResponse assembly, FlaggedItem creation, LangChain export, end-to-end multi-tool pipeline execution, real DuckDB integration |
+| `.agents/context/progress-tracker.md` | Modified | Marked Phase 2 Explanation Tool, Reporting Tool, and Verification as `[x]` complete |
+
+## Test Results
+- **Total tests: 124 (all passing)**
+  - Phase 1 Foundation & Storage: 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests ✅
+  - EDA Tool: 19 tests ✅
+  - Feature Engineering Tool: 11 tests ✅
+  - Detection Tool: 11 tests ✅
+  - Scoring Tool: 6 tests ✅
+  - Explanation Tool: 10 tests ✅
+  - Reporting Tool & End-to-End Pipeline: 4 tests ✅
+
+## Key Architectural Decisions
+1. **Numeric Preservation Guardrail**: `verify_numeric_preservation()` extracts numeric tokens via regex (`\b\d+(?:\.\d+)?\b`) and verifies that any phrasing polish strictly preserves all grounded numeric facts without alteration.
+2. **Canonical AgentResponse Assembly**: The Reporting Tool aggregates outputs from all preceding steps into a typed `AgentResponse` model, complete with `FlaggedItem` domain objects, chart file paths, summary metrics, and executive prose.
+3. **Phase 2 Completion**: All tools specified in Phase 2 (`registry`, `data_query`, `eda`, `features`, `detection`, `scoring`, `explanation`, `reporting`) are fully implemented, unit-tested, integration-tested on IBM AMLSim synthetic data, and exported for LangChain/LangGraph compatibility.
+
+## Skills & Tools Used
+- `scikit-learn` / `PyOD` / `matplotlib` — feature scaling, anomaly detection, chart visualization
+- `pytest` — full test suite execution & end-to-end pipeline verification

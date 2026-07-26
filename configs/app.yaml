@@ -1,0 +1,44 @@
+# Core application, provider, and storage runtime settings
+provider: "groq"
+model_id: "llama-3.3-70b-versatile"
+fallback_model_id: "llama-3.1-8b-instant"
+base_url: null
+api_key_env_var: "GROQ_API_KEY"
+temperature: 0.0
+max_retries: 3
+timeout_seconds: 30.0
+
+db_path: "activity.duckdb"
+raw_data_dir: "dataset"
+processed_data_dir: "data/processed"
+feature_cache_ttl_hours: 24
+
+max_plan_steps: 8
+ml_random_seed: 42
+config_version: "v1.0.0"
+feature_parallel_workers: 4
+
+# Query cache — 0.78 catches near-paraphrases without false-matching unrelated queries
+query_cache_enabled: true
+query_cache_ttl_minutes: 30
+semantic_cache_enabled: true
+semantic_cache_threshold: 0.78
+
+# Explanation output shaping
+explain_top_n_entity: 1
+explain_top_n_default: 5
+explain_top_n_batch: 10
+
+# Explanation polish
+explanation_polish_enabled: true
+explanation_polish_tolerance: 0.20
+
+# Agent graph — set to false to use the legacy decision-table planner instead
+use_tool_calling_agent: true
+tool_call_max_iterations: 10
+
+# Time window fallback for open-ended date queries
+default_window_days: 90
+
+# Query display truncation in explanation context sentences
+query_display_max_chars: 80

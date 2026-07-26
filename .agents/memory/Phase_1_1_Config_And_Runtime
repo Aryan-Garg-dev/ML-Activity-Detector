@@ -1,0 +1,25 @@
+# Phase 1 Part 1: Config And Runtime
+
+**Updation Date:** 2026-07-25
+
+## Changes Made
+- Created YAML configuration files for app, logging, and threshold settings.
+- Implemented core domain string enums for intents, patterns, risk levels, actions, tools, and LLM providers.
+- Built `AppConfig` Pydantic configuration class with automatic environment variable and YAML file loader.
+- Setup structured `loguru` logger configuration and JSON-formatted `log_tool_execution` helper.
+- Configured Pytest in `pyproject.toml` and added unit test suite `tests/test_config.py`.
+
+## Files Modified / Created
+- `configs/app.yaml` [NEW]
+- `configs/logging.yaml` [NEW]
+- `configs/thresholds.yaml` [NEW]
+- `src/core/types.py` [NEW]
+- `src/core/config.py` [NEW]
+- `src/core/logging.py` [NEW]
+- `tests/test_config.py` [NEW]
+- `pyproject.toml` [MODIFIED]
+
+## Skills and Tools Used
+- `uv` (dependency management: pydantic, pyyaml, pydantic-settings, pytest)
+- `replace_file_content`, `write_to_file`, `view_file` (file management)
+- `run_command` (verification and testing)

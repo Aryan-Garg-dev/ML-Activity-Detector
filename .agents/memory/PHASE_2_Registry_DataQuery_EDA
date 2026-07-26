@@ -1,0 +1,49 @@
+# Phase 2 — Tool Registry, Data Query Tool, EDA Tool
+
+## Summary
+Implemented the first three Phase 2 deliverables: Tool Registry, DataQueryTool, and EDATool.
+All tools are standalone deterministic functions (no LLM). Each tool accepts typed Pydantic input,
+returns typed ToolResult, and is dispatched through the registry with automatic timing and audit logging.
+
+## Date: 2026-07-25
+
+## Files Created / Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/tools/registry.py` | Created | ToolSpec model, ToolRegistry with register/get/validate_and_call, ToolNotFoundError, ToolValidationError, structured log emission |
+| `src/tools/data_query/__init__.py` | Created | Package init |
+| `src/tools/data_query/aggregator.py` | Created | Parameterized SQL engine: column whitelist, WHERE builder, GROUP BY/HAVING, filtered SELECT |
+| `src/tools/data_query/tool.py` | Created | DataQueryInput schema, execute_data_query callable (filtered lookup + aggregation modes) |
+| `src/tools/eda/__init__.py` | Created | Package init |
+| `src/tools/eda/charts.py` | Created | 4 chart generators: volume timeline, amount distribution, fraud comparison, top senders (matplotlib Agg backend) |
+| `src/tools/eda/tool.py` | Created | EDAInput schema, execute_eda callable (profiling, amounts, volume trends, fraud baseline, top senders, charts) |
+| `tests/test_tools/__init__.py` | Created | Package init |
+| `tests/test_tools/test_registry.py` | Created | 14 tests: registration, lookup, validation, dispatch, error handling, structured log verification |
+| `tests/test_tools/test_data_query.py` | Created | 39 tests: column whitelist, WHERE clause, all filter operators, all agg functions, HAVING, tool execute, integration |
+| `tests/test_tools/test_eda.py` | Created | 19 tests: profiling, amounts, volume trends, fraud baseline, top senders, filters, charts, empty data, integration |
+| `.agents/context/progress-tracker.md` | Updated | Marked Tool Registry, Data Query, EDA items as [x] complete |
+
+## Test Results
+- **Total tests: 82 (all passing)**
+  - Phase 1 (existing): 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests (36 unit + 3 integration) ✅
+  - EDA Tool: 19 tests (17 unit + 2 integration) ✅
+
+## Key Design Decisions
+1. **Registry dispatch pattern**: `validate_and_call()` is the single execution boundary — validates input schema, executes tool, captures timing, emits structured log. All tools flow through this path.
+2. **Column whitelist over parameterization**: SQL column names cannot be parameterized, so a strict whitelist validates column names. Values are always parameterized with `?` placeholders.
+3. **LangChain integration deferred**: Phase 2 tools are plain callables matching `(input, config, db_client, query_id, step_id) -> ToolResult`. LangChain `BaseTool`/`@tool` wrappers will be added in Phase 3.
+4. **Matplotlib Agg backend**: Headless PNG rendering for server-side charts. Compatible with future Streamlit frontend.
+5. **Timestamp as day-index**: The AMLSim dataset uses integer day-indices (0–199), not Unix timestamps. All time-windowed logic operates on these offsets.
+
+## Dependencies
+No new dependencies added. All required packages (duckdb, pandas, numpy, matplotlib, pydantic, loguru) were already in `pyproject.toml` from Phase 1.
+
+## Skills Used
+- `/develop` — feature delivery against the approved plan
+- `/test` — comprehensive test suites for all three components
+
+## Known Issues
+- `src/tools/explaination/` directory has a spelling typo (should be `explanation/`). Currently empty; will be corrected when the Explanation Tool is implemented.

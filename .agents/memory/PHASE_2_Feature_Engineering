@@ -1,0 +1,41 @@
+# Phase 2 — Feature Engineering Tool & LangChain Integration Bridge
+
+## Summary
+Implemented the Feature Engineering Tool (`FeatureTool`) for the AML detection pipeline, covering 4 feature families (`volume`, `threshold`, `network`, `velocity`) with DuckDB `FeatureRepo` caching support. Additionally, implemented the LangChain integration bridge (`to_langchain_tool()` / `get_langchain_tools()`) in `ToolSpec` and `ToolRegistry` to ensure all tools integrate seamlessly with LangChain models (`llm.bind_tools()`) and LangGraph (`ToolNode`).
+
+## Date: 2026-07-25T18:19:50+05:30
+
+## Files Created / Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `pyproject.toml` | Modified | Added `networkx` and `langchain-core` dependencies using `uv add` |
+| `src/tools/registry.py` | Modified | Added `to_langchain_tool()` to `ToolSpec` and `get_langchain_tools()` to `ToolRegistry` for LangChain/LangGraph export |
+| `src/tools/features/__init__.py` | Created | Package init for feature engineering tool |
+| `src/tools/features/volume.py` | Created | Vectorized volume calculations: `txn_count_7d/30d`, `txn_sum_7d/30d`, `avg_amount`, `amount_std` |
+| `src/tools/features/threshold.py` | Created | Structuring/threshold calculations: `count_near_threshold_30d` ($0.85T - 0.99T$), `round_number_bias` |
+| `src/tools/features/network.py` | Created | NetworkX directed graph features: `distinct_counterparties_30d`, `fan_in_degree`, `fan_out_degree` |
+| `src/tools/features/velocity.py` | Created | Velocity and rapid cash-out features: MAD-based `velocity_zscore`, `dwell_time_avg_hours`, `in_out_ratio_30d`, `distinct_countries_30d` |
+| `src/tools/features/tool.py` | Created | `FeatureInput` schema, `execute_feature_engineering()` dispatcher with family selection & DuckDB `FeatureRepo` caching |
+| `tests/test_tools/test_features.py` | Created | 11 tests: unit tests per family, dispatcher, caching, error states, LangChain tool export, real DuckDB integration |
+| `.agents/context/progress-tracker.md` | Modified | Marked Feature Engineering Tool items as `[x]` complete |
+
+## Test Results
+- **Total tests: 93 (all passing)**
+  - Phase 1 Foundation & Storage: 10 tests ✅
+  - Tool Registry: 14 tests ✅
+  - Data Query Tool: 39 tests ✅
+  - EDA Tool: 19 tests ✅
+  - Feature Engineering Tool: 11 tests ✅
+
+## Key Architectural Decisions
+1. **LangChain & LangGraph Compatibility**: `ToolSpec.to_langchain_tool()` wraps any registered tool as a `langchain_core.tools.StructuredTool`. This bridges our typed Pydantic registry with LangChain and LangGraph `ToolNode`.
+2. **NetworkX Graph Construction**: Built directed transaction graphs from 30-day window edges to calculate topological `fan_in_degree`, `fan_out_degree`, and `distinct_counterparties_30d`.
+3. **MAD-based Robust Velocity Z-Score**: Used Median Absolute Deviation (MAD) for `velocity_zscore` to remain robust against extreme outlier transaction bursts in synthetic AML data.
+4. **DuckDB Feature Cache Persistence**: Features computed per account and family are persisted in the `feature_cache` table using `FeatureRepo` and read back on demand when `use_cache=True`.
+
+## Skills & Tools Used
+- `uv` — dependency management (`uv add networkx`, `uv add langchain-core`)
+- `scikit-learn` / `pandas` / `numpy` — vectorized feature transformations
+- `NetworkX` — directed graph topology analysis
+- `pytest` — automated testing & verification

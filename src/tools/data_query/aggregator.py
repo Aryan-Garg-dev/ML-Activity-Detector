@@ -153,7 +153,9 @@ def run_aggregation(
     if agg_func_upper not in VALID_AGG_FUNCTIONS:
         raise ValueError(f"Invalid aggregation function '{agg_func}'. Valid: {VALID_AGG_FUNCTIONS}")
 
-    validate_columns(group_by, table)
+    group_by_cols = group_by or []
+    if group_by_cols:
+        validate_columns(group_by_cols, table)
 
     # Build the aggregate expression
     if agg_column:
@@ -162,13 +164,18 @@ def run_aggregation(
     else:
         agg_expr = f"{agg_func_upper}(*)"
 
-    group_by_sql = ", ".join(group_by)
-    select_cols = f"{group_by_sql}, {agg_expr} AS agg_value"
+    if group_by_cols:
+        group_by_sql = ", ".join(group_by_cols)
+        select_cols = f"{group_by_sql}, {agg_expr} AS agg_value"
+        group_clause = f" GROUP BY {group_by_sql}"
+    else:
+        select_cols = f"{agg_expr} AS agg_value"
+        group_clause = ""
 
     # Build WHERE clause
     where_sql, params = build_where_clause(filters or {}, table)
 
-    sql = f"SELECT {select_cols} FROM {table}{where_sql} GROUP BY {group_by_sql}"
+    sql = f"SELECT {select_cols} FROM {table}{where_sql}{group_clause}"
 
     # HAVING clause — applies to the aggregate value
     if having:
@@ -193,7 +200,7 @@ def run_aggregation(
     logger.debug("Aggregation query: {sql} params={params}", sql=sql, params=params)
     rows = client.query(sql, params)
 
-    result_columns = group_by + ["agg_value"]
+    result_columns = group_by_cols + ["agg_value"]
     result_rows = [dict(zip(result_columns, row)) for row in rows]
 
     return {

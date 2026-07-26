@@ -132,6 +132,7 @@ def polish_explanation(
                 "However, retaining detailed LLM explanation as requested.",
                 nums=hallucinated,
             )
+            return raw_explanation
         else:
             logger.info(
                 "Explanation polish warning: {pct:.0f}% of grounded numbers missing (tolerance {tol:.0f}%). "

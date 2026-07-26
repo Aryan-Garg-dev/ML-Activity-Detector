@@ -148,3 +148,22 @@ def test_get_audit_trace_endpoint(client):
     audit_data = audit_resp.json()
     assert audit_data["query_id"] == qid
     assert audit_data["event_count"] >= 1
+
+
+def test_ingest_endpoint(client, monkeypatch):
+    """Test the /ingest endpoint with dummy CSV files."""
+    dummy_csv = b"id,val\n1,A\n2,B"
+    files = {
+        "accounts": ("accounts.csv", dummy_csv, "text/csv"),
+        "transactions": ("transactions.csv", dummy_csv, "text/csv"),
+    }
+    
+    # Mock ingest_csv to avoid actually calling DuckDB
+    monkeypatch.setattr("api.main.DuckDBClient.ingest_csv", lambda self, t, p: 2)
+    
+    response = client.post("/ingest", files=files)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["ingested_rows"]["accounts"] == 2
+    assert data["ingested_rows"]["transactions"] == 2

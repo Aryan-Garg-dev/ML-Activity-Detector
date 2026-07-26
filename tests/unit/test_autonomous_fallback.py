@@ -49,7 +49,7 @@ def test_autonomous_fallback_when_undecided(tmp_path):
     }
 
     # Invoke graph
-    res = graph.invoke(initial_state)
+    res = graph.invoke(initial_state, config={"configurable": {"thread_id": "test"}})
 
     # Verify that fallback_fixed_flow ran and created an execution plan
     assert "execution_plan" in res

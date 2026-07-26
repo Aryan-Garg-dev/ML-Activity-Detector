@@ -86,6 +86,8 @@ def execute_scoring(
             # Risk level & escalation action mapping
             risk_level, escalation = _classify_risk(composite_score, config)
 
+            feature_contributions = det_info.get("feature_contributions", {})
+
             assessment_id = f"risk_{uuid.uuid4().hex[:8]}"
             assessment = RiskAssessment(
                 assessment_id=assessment_id,
@@ -96,6 +98,7 @@ def execute_scoring(
                 risk_level=risk_level,
                 escalation_action=escalation,
                 triggered_signals=triggered_signals,
+                feature_contributions=feature_contributions,
             )
             assessments.append(assessment)
 

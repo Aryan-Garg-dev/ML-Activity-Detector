@@ -46,20 +46,43 @@ uv run python scripts/load_data.py
 
 This loads the IBM AMLSim CSVs from `dataset/` into `activity.duckdb`.
 
-### 5. Run the API Server
+### 5. Instructions for Use
+
+#### Run the API Server (FastAPI)
 
 ```bash
 uv run uvicorn api.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
 ```
-
 Open **http://localhost:8000/docs** for the interactive Swagger UI.
 
-### 6. Run the CLI
+#### Run the Streamlit Frontend
 
 ```bash
-uv run python main.py --query "Find structuring patterns in the last 30 days"
-uv run python main.py --query "Is customer 4521 suspicious?" --format json
-uv run python main.py --query "Which accounts made 10+ transactions under $10,000?"
+uv run streamlit run src/frontend/app.py
+```
+Open **http://localhost:8501** to access the interactive web interface, upload datasets, and chat with the agent.
+
+#### Run the CLI (`main.py`)
+
+**Usage format**: `uv run python main.py --query "<your query>" [--format <text|json>] [--detailed]`
+
+```bash
+uv run python src/main.py --query "Find structuring patterns in the last 30 days"
+uv run python src/main.py --query "Is customer 4521 suspicious?" --format json
+uv run python src/main.py --query "Which accounts made 10+ transactions under $10,000?" --detailed
+```
+
+#### Run the Test Suite
+
+```bash
+# Run all tests with standard output
+uv run pytest
+
+# Run all tests with verbose output
+uv run pytest -v
+
+# Run specific integration tests
+uv run pytest tests/integration/test_real_llm_end_to_end.py
 ```
 
 ---

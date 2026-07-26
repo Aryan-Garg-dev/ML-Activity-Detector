@@ -397,6 +397,20 @@ def test_execute_invalid_column_returns_error(db_client: DuckDBClient, config: A
     assert "Invalid columns" in result.error_summary
 
 
+    def test_empty_group_by_aggregation(self, db_client: DuckDBClient):
+        """Test aggregation without group_by columns (global table aggregation)."""
+        res = run_aggregation(
+            client=db_client,
+            table="transactions",
+            group_by=[],
+            agg_func="COUNT",
+            filters={"tx_amount": {"op": "<", "value": 500}},
+        )
+        assert res["row_count"] == 1
+        assert "agg_value" in res["rows"][0]
+        assert res["rows"][0]["agg_value"] == 3
+
+
 # --- Integration: real activity.duckdb ---
 
 @pytest.mark.skipif(

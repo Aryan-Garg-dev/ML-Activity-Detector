@@ -679,6 +679,13 @@ def build_tool_calling_graph(
         messages = list(state.get("messages") or [])
         if not messages:
             return "extract_state"
+
+        # Prevent infinite tool call loops that burn tokens and trigger 429 rate limits
+        tool_messages_count = sum(1 for m in messages if isinstance(m, ToolMessage))
+        if tool_messages_count >= 5:
+            logger.warning("_should_continue: Reached max tool execution limit (5 turns). Forcing extraction.")
+            return "extract_state"
+
         last = messages[-1]
         if isinstance(last, AIMessage) and (getattr(last, "tool_calls", None) or []):
             return "tools"

@@ -26,6 +26,12 @@ def load_dataset(config: AppConfig | None = None) -> None:
     transactions_csv = dataset_dir / "transactions.csv"
     alerts_csv = dataset_dir / "alerts.csv"
 
+    if not accounts_csv.exists() and (dataset_dir / "test" / "accounts.csv").exists():
+        dataset_dir = dataset_dir / "test"
+        accounts_csv = dataset_dir / "accounts.csv"
+        transactions_csv = dataset_dir / "transactions.csv"
+        alerts_csv = dataset_dir / "alerts.csv"
+
     if accounts_csv.exists() or transactions_csv.exists() or alerts_csv.exists():
         logger.info("Clearing existing tables in reverse dependency order...")
         client.execute("DELETE FROM alerts")

@@ -160,6 +160,36 @@ def evaluate_multi_destination_rules(
     return flags
 
 
+def evaluate_weekend_behaviour_rules(features: dict[str, Any]) -> list[str]:
+    """Detect high concentration of weekend activity."""
+    flags = []
+    # If the feature doesn't exist, this will default to 0.0
+    weekend_ratio = float(features.get("weekend_txn_ratio", 0.0))
+    if weekend_ratio > 0.6:
+        flags.append("R_WEEKEND_01")
+    return flags
+
+
+def evaluate_night_time_activity_rules(features: dict[str, Any]) -> list[str]:
+    """Detect high concentration of night-time activity."""
+    flags = []
+    night_ratio = float(features.get("night_txn_ratio", 0.0))
+    if night_ratio > 0.5:
+        flags.append("R_NIGHT_01")
+    return flags
+
+
+def evaluate_account_takeover_indicators_rules(features: dict[str, Any]) -> list[str]:
+    """Detect account takeover indicators like new IP, high velocity after dormancy, etc."""
+    flags = []
+    new_devices = int(features.get("new_devices_7d", 0))
+    failed_logins = int(features.get("failed_logins_7d", 0))
+    
+    if new_devices >= 2 and failed_logins >= 3:
+        flags.append("R_ATO_01")
+    return flags
+
+
 def evaluate_account_rules(
     features: dict[str, Any],
     pattern: PatternType | str = PatternType.UNKNOWN,
@@ -193,5 +223,12 @@ def evaluate_account_rules(
         all_flags.extend(evaluate_large_spike_rules(features))
     if pattern_str in ("multi_destination", "multi_dest", PatternType.UNKNOWN) or pattern_str not in ("dormant", "duplicate", "spike", "structuring", "smurfing", "layering", "rapid_cashout", "velocity"):
         all_flags.extend(evaluate_multi_destination_rules(features))
+        
+    if pattern_str in (PatternType.TREND_ANALYSIS, "trend", "trend_analysis", PatternType.UNKNOWN):
+        all_flags.extend(evaluate_weekend_behaviour_rules(features))
+        all_flags.extend(evaluate_night_time_activity_rules(features))
+        
+    if pattern_str in (PatternType.RELATIONSHIP_ANALYSIS, "relationship", "relationship_analysis", "account_takeover", PatternType.UNKNOWN):
+        all_flags.extend(evaluate_account_takeover_indicators_rules(features))
 
     return list(dict.fromkeys(all_flags))  # Deduplicate keeping order

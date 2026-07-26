@@ -8,8 +8,12 @@ class QuerySpec(BaseModel):
     intent_type: IntentType
     pattern_type: PatternType = PatternType.UNKNOWN
     target_entity_id: str | None = None
+    time_window_days: int | None = None
     filters: dict[str, Any] = Field(default_factory=dict)
     aggregation_spec: dict[str, Any] = Field(default_factory=dict)
+    confidence_score: float = 1.0
+    is_ambiguous: bool = False
+    missing_entities: list[str] = Field(default_factory=list)
     raw_query: str
 
     @field_validator("intent_type", mode="before")
@@ -57,6 +61,8 @@ class ExecutionPlan(BaseModel):
     steps: list[PlanStep]
     tools_skipped: list[ToolName] = Field(default_factory=list)
     skip_reasons: dict[str, str] = Field(default_factory=dict)
+    estimated_cost: float = 0.0
+    estimated_latency_ms: float = 0.0
 
 # Standard typed output returned by an executed tool
 class ToolResult(BaseModel):
@@ -68,12 +74,21 @@ class ToolResult(BaseModel):
     duration_ms: float = 0.0
     error_summary: str | None = None
 
+class ExecutionContext(BaseModel):
+    run_id: str
+    total_duration_ms: float = 0.0
+    cache_hits: int = 0
+    tools_executed: list[ToolName] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
 # Final structured response returned to user or API client
 class AgentResponse(BaseModel):
     query_id: str
     raw_query: str
     intent: IntentType
     execution_summary: dict[str, Any] = Field(default_factory=dict)
+    execution_context: ExecutionContext | None = None
     flagged_items: list[Any] = Field(
         default_factory=list,
         description="List of FlaggedItem domain models with account_record and recent_transactions fields.",

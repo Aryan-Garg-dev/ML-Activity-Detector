@@ -15,6 +15,8 @@ class PatternType(StrEnum):
     LAYERING = "layering"
     RAPID_CASHOUT = "rapid_cashout"
     VELOCITY = "velocity"
+    TREND_ANALYSIS = "trend_analysis"
+    RELATIONSHIP_ANALYSIS = "relationship_analysis"
     UNKNOWN = "unknown"
 
 # Enum defining risk levels for assessed entities
@@ -39,6 +41,7 @@ class ToolName(StrEnum):
     EXPLANATION = "explanation"
     REPORTING = "reporting"
     ENTITY_LOOKUP = "entity_lookup"
+    INVESTIGATION = "investigation"
 
 # Enum defining supported LLM backend providers
 class ProviderName(StrEnum):

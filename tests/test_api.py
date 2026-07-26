@@ -158,8 +158,10 @@ def test_ingest_endpoint(client, monkeypatch):
         "transactions": ("transactions.csv", dummy_csv, "text/csv"),
     }
     
-    # Mock ingest_csv to avoid actually calling DuckDB
-    monkeypatch.setattr("api.main.DuckDBClient.ingest_csv", lambda self, t, p: 2)
+    from unittest.mock import MagicMock
+    mock_db = MagicMock()
+    mock_db.query.return_value = [(2,)]
+    monkeypatch.setattr("api.main.get_duckdb_client", lambda config: mock_db)
     
     response = client.post("/ingest", files=files)
     assert response.status_code == 200

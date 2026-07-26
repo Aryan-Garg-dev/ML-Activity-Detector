@@ -76,7 +76,7 @@ def execute_data_query(
         (input, config, db_client, query_id, step_id) -> ToolResult
     """
     try:
-        is_aggregation = input.group_by is not None and input.agg_func is not None
+        is_aggregation = bool(input.agg_func and input.agg_func.strip())
 
         if is_aggregation:
             result = run_aggregation(

@@ -323,7 +323,7 @@ def ingest_datasets(
                     "SELECT column_name FROM information_schema.columns "
                     f"WHERE table_name = '{table}' ORDER BY ordinal_position"
                 )
-                table_cols = [r[0].lower() for r in table_cols_raw]
+                table_cols = [str(r[0]).lower() for r in table_cols_raw]
 
                 missing_cols = [c for c in table_cols if c not in csv_cols]
 

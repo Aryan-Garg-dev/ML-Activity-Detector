@@ -22,6 +22,14 @@ Pattern Types:
 - velocity: Abnormal spike in transaction frequency or total volume over baseline.
 - unknown: When query does not specify a distinct pattern.
 
+Query Decomposition & Multi-Step Reasoning:
+- If a query implies multiple steps (e.g. "Find structuring patterns and investigate their networks"), infer the primary intent (e.g. pattern_search) but include details in the `filters` or `aggregation_spec` to guide downstream tools (like adding `requires_investigation: true`).
+
+Confidence and Ambiguity Detection:
+- Assign a `confidence_score` (0.0 to 1.0) indicating how certain you are of the parsed intent.
+- If the query is vague, missing crucial context, or entirely unparseable, set `is_ambiguous` to true.
+- If key details are missing (e.g., asked for a specific customer but gave no ID), list them in `missing_entities`.
+
 Few-Shot Examples:
 Query: "Find structuring patterns in the last 30 days"
 QuerySpec: {
@@ -30,6 +38,9 @@ QuerySpec: {
   "target_entity_id": null,
   "filters": {"days": 30, "max_amount": 9999.0},
   "aggregation_spec": {},
+  "confidence_score": 0.95,
+  "is_ambiguous": false,
+  "missing_entities": [],
   "raw_query": "Find structuring patterns in the last 30 days"
 }
 
@@ -40,27 +51,23 @@ QuerySpec: {
   "target_entity_id": null,
   "filters": {"max_amount": 9999.0},
   "aggregation_spec": {"min_count": 10, "group_by": "account_id"},
+  "confidence_score": 0.98,
+  "is_ambiguous": false,
+  "missing_entities": [],
   "raw_query": "Which customers made 10+ transactions under $10,000?"
 }
 
-Query: "Is customer ID 4521 suspicious?"
+Query: "Tell me about that one suspicious guy"
 QuerySpec: {
   "intent_type": "entity_lookup",
-  "pattern_type": "unknown",
-  "target_entity_id": "4521",
-  "filters": {},
-  "aggregation_spec": {},
-  "raw_query": "Is customer ID 4521 suspicious?"
-}
-
-Query: "Give me an overview of overall transaction volume trends and distributions"
-QuerySpec: {
-  "intent_type": "broad_eda",
   "pattern_type": "unknown",
   "target_entity_id": null,
   "filters": {},
   "aggregation_spec": {},
-  "raw_query": "Give me an overview of overall transaction volume trends and distributions"
+  "confidence_score": 0.30,
+  "is_ambiguous": true,
+  "missing_entities": ["Customer ID or Account ID"],
+  "raw_query": "Tell me about that one suspicious guy"
 }
 """
 

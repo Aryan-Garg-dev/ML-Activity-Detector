@@ -31,7 +31,7 @@ class TestRealLLMEndToEnd:
             )
 
             raw_query = "Find structuring patterns in the last 30 days"
-            final_state = graph.invoke({"raw_query": raw_query})
+            final_state = graph.invoke({"raw_query": raw_query}, config={"configurable": {"thread_id": "test"}})
 
             agent_response = final_state.get("agent_response")
             assert agent_response is not None
@@ -61,7 +61,7 @@ class TestRealLLMEndToEnd:
             )
 
             raw_query = "Is account ID 4521 suspicious?"
-            final_state = graph.invoke({"raw_query": raw_query})
+            final_state = graph.invoke({"raw_query": raw_query}, config={"configurable": {"thread_id": "test"}})
 
             agent_response = final_state.get("agent_response")
             assert agent_response is not None

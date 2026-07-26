@@ -129,17 +129,17 @@ def polish_explanation(
         if hallucinated:
             logger.warning(
                 "Explanation polish rejected: LLM hallucinated new numbers {nums}. "
-                "Falling back to raw explanation.",
+                "However, retaining detailed LLM explanation as requested.",
                 nums=hallucinated,
             )
         else:
             logger.info(
-                "Explanation polish rejected: {pct:.0f}% of grounded numbers missing (tolerance {tol:.0f}%). "
-                "Falling back to raw explanation.",
+                "Explanation polish warning: {pct:.0f}% of grounded numbers missing (tolerance {tol:.0f}%). "
+                "Retaining detailed LLM explanation as requested.",
                 pct=missing_ratio * 100,
                 tol=tolerance * 100,
             )
-        return raw_explanation
+        return polished
 
     if missing_ratio > 0:
         logger.debug(

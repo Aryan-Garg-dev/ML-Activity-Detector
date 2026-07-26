@@ -117,6 +117,10 @@ def build_legacy_agent_graph(
     workflow.add_node("plan", _plan)
     workflow.add_node("execute_step", _execute_step)
     workflow.add_node("explain", _explain)
+    from agent.nodes import verify_node
+    def _verify(state: AgentState) -> dict[str, Any]:
+        return verify_node(state)
+    workflow.add_node("verify", _verify)
     workflow.add_node("report", _report)
     workflow.add_node("replan", _replan)
 
@@ -129,9 +133,12 @@ def build_legacy_agent_graph(
         {"execute_step": "execute_step", "replan": "replan", "explain": "explain"},
     )
     workflow.add_edge("replan", "execute_step")
-    workflow.add_edge("explain", "report")
+    workflow.add_edge("explain", "verify")
+    workflow.add_edge("verify", "report")
     workflow.add_edge("report", END)
 
-    app = workflow.compile()
+    from langgraph.checkpoint.memory import MemorySaver
+    memory = MemorySaver()
+    app = workflow.compile(checkpointer=memory)
     logger.info("Compiled legacy LangGraph agent workflow graph successfully")
     return app

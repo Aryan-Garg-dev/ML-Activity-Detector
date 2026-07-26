@@ -129,9 +129,16 @@ def format_grounded_explanation(
     if ml_signals:
         ml_score = float(risk_info.get("ml_anomaly_score", feature_info.get("ml_anomaly_score", 0.0)))
         detector_names = "/".join(s.replace("ML_", "") for s in ml_signals) if ml_signals[0] != "ML_ANOMALY" else "IForest/LOF"
+        
+        feature_contributions = risk_info.get("feature_contributions", {})
+        contrib_text = ""
+        if feature_contributions:
+            items = [f"{k} (+{v})" for k, v in feature_contributions.items()]
+            contrib_text = f" Top contributing features: {', '.join(items)}."
+
         explanations.append(
             f"Unsupervised ML ({detector_names}) flagged this account "
-            f"at anomaly percentile rank {ml_score:.2f}."
+            f"at anomaly rank {ml_score:.2f}.{contrib_text}"
         )
 
     if "R_DORMANT_01" in signals or "R_DORMANT_02" in signals:

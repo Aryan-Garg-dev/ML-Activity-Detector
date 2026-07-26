@@ -374,3 +374,44 @@ class QueryCache:
             "semantic_threshold": self._semantic_threshold,
             "embedding_backend": "fastembed" if _FASTEMBED_AVAILABLE else ("tfidf" if _SKLEARN_AVAILABLE else "none"),
         }
+
+
+class ArtefactCache:
+    """Cache for intermediate artifacts (FeatureSet, DetectionResult, ScoreResult).
+    
+    Keys are hashes of the tool inputs. Values are the result dictionary.
+    """
+    def __init__(self, ttl_seconds: int = 3600):
+        self._store: dict[str, dict[str, Any]] = {}
+        self._ttl_seconds = ttl_seconds
+        self._timestamps: dict[str, float] = {}
+        
+    def _hash_inputs(self, tool_name: str, args: dict[str, Any]) -> str:
+        import json
+        arg_str = json.dumps(args, sort_keys=True, default=str)
+        key_str = f"{tool_name}:{arg_str}"
+        return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
+
+    def get(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+        key = self._hash_inputs(tool_name, args)
+        if key in self._store:
+            if time.monotonic() - self._timestamps.get(key, 0) <= self._ttl_seconds:
+                logger.debug("ArtefactCache HIT for {tool}", tool=tool_name)
+                return self._store[key]
+            else:
+                self._store.pop(key, None)
+                self._timestamps.pop(key, None)
+        return None
+
+    def put(self, tool_name: str, args: dict[str, Any], data: dict[str, Any]) -> None:
+        key = self._hash_inputs(tool_name, args)
+        self._store[key] = data
+        self._timestamps[key] = time.monotonic()
+        logger.debug("ArtefactCache PUT for {tool}", tool=tool_name)
+
+    def clear(self) -> None:
+        self._store.clear()
+        self._timestamps.clear()
+
+# Global instances
+artefact_cache = ArtefactCache()

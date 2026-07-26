@@ -150,12 +150,35 @@ def fit_predict_ml_anomalies(
     # Equal-weight ensemble: average of three detector scores
     combined_scores = (iforest_norm + lof_norm + hbos_norm) / 3.0
 
+    # Calculate SHAP values for interpretability
+    shap_values = None
+    try:
+        import shap
+        # Isolation Forest is tree-based, so we can use TreeExplainer on its underlying sklearn model
+        explainer = shap.TreeExplainer(iforest.detector_)
+        # TreeExplainer for IForest returns positive values for outliers
+        shap_values = explainer.shap_values(X_scaled[:len(target_acc_ids)])
+    except Exception as e:
+        logger.warning("SHAP explanation failed: {e}", e=e)
+
     results: dict[int, dict[str, Any]] = {}
     for i, acc in enumerate(target_acc_ids):
         score = float(round(combined_scores[i], 4))
         iforest_flagged = bool(iforest_norm[i] >= cutoff_threshold)
         lof_flagged = bool(lof_norm[i] >= cutoff_threshold)
         hbos_flagged = bool(hbos_norm[i] >= cutoff_threshold)
+        
+        feature_contributions = {}
+        if shap_values is not None:
+            # Extract top 3 contributing features
+            instance_shap = shap_values[i]
+            # argsort sorts ascending, so we take the last 3 for highest positive contributions
+            top_indices = np.argsort(instance_shap)[-3:]
+            for idx in top_indices:
+                feat_name = feature_keys[idx]
+                feat_val = float(instance_shap[idx])
+                if feat_val > 0.01:  # Only include meaningful contributions
+                    feature_contributions[feat_name] = round(feat_val, 4)
 
         results[acc] = {
             "ml_anomaly_score": score,
@@ -166,6 +189,7 @@ def fit_predict_ml_anomalies(
             "iforest_flagged": iforest_flagged,
             "lof_flagged": lof_flagged,
             "hbos_flagged": hbos_flagged,
+            "feature_contributions": feature_contributions,
         }
 
     logger.debug(

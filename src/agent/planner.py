@@ -29,7 +29,7 @@ class Planner:
                 intent=query_spec.intent_type,
                 pattern=query_spec.pattern_type,
             )
-            return tier1_plan
+            return ExecutionOptimizer.optimize_plan(tier1_plan, self.registry)
 
         # Tier 2 LLM Fallback Planner
         if self.llm_client:
@@ -38,11 +38,12 @@ class Planner:
             if tier2_plan:
                 is_valid, reason = validate_execution_plan(tier2_plan, self.registry)
                 if is_valid:
-                    return tier2_plan
+                    return ExecutionOptimizer.optimize_plan(tier2_plan, self.registry)
                 logger.warning("Tier 2 LLM plan failed guardrails ({reason}), falling back to default plan", reason=reason)
 
         # Fallback default plan
-        return self._build_default_plan(query_spec, query_id, plan_id)
+        default_plan = self._build_default_plan(query_spec, query_id, plan_id)
+        return ExecutionOptimizer.optimize_plan(default_plan, self.registry)
 
     def _tier1_decision_table(self, query_spec: QuerySpec, query_id: str, plan_id: str) -> ExecutionPlan | None:
         intent = query_spec.intent_type
@@ -182,18 +183,19 @@ class Planner:
         if not self.llm_client:
             return None
 
+        tools_info = []
+        for tool in self.registry.list_tools():
+            meta = tool.metadata
+            deps = [d.value for d in meta.dependencies] if meta.dependencies else []
+            intents = [i.value for i in meta.supported_intents] if meta.supported_intents else ["any"]
+            tools_info.append(f"- {tool.name.value}: {tool.description} (Intents: {intents}, Deps: {deps})")
+        tools_text = "\n".join(tools_info)
+
         prompt = f"""Construct a minimal, focused ExecutionPlan for the following query specification:
 {query_spec.model_dump_json(indent=2)}
 
 Available Tools:
-- data_query: Direct DuckDB aggregations and filters (no ML). Use for: counting transactions, threshold lookups, top-N queries.
-- eda: Exploratory data analysis profiles and visual charts. Use for: distribution queries, overview, baseline stats.
-- feature_engineering: Compute features (families: volume, threshold, network, velocity). Required before detection.
-- detection: Rule + ML anomaly detection ensemble (patterns: structuring, smurfing, layering, rapid_cashout, velocity). Requires feature_engineering first.
-- scoring: Calculate risk scores, confidence, and escalation action. Requires detection first.
-- explanation: Generate compliance explanation narrative. Requires scoring first.
-- reporting: Formulate final AgentResponse. Always the last step.
-- entity_lookup: Check single account ID cache / alert records. Use for single-entity queries.
+{tools_text}
 
 Workflow Decision Guide (select the MINIMUM path needed):
 1. If intent=aggregation_query or query has counting/threshold lookup → use: data_query → reporting
@@ -228,3 +230,52 @@ Rules:
             PlanStep(step_id=5, tool_name=ToolName.REPORTING, args={}, reason="Report response"),
         ]
         return ExecutionPlan(plan_id=plan_id, query_id=query_id, steps=steps, tools_skipped=[ToolName.EDA, ToolName.DATA_QUERY], skip_reasons={"eda": "Default fallback plan"})
+
+
+class ExecutionOptimizer:
+    """Optimizes execution plans by calculating cost, latency, and pruning redundant tool calls."""
+    
+    # Baseline estimates per tool (latency in ms, cost in abstract compute units)
+    # These will eventually be driven by ToolCapability Metadata (Task 3)
+    TOOL_METRICS = {
+        ToolName.DATA_QUERY: {"latency": 50.0, "cost": 0.5},
+        ToolName.EDA: {"latency": 120.0, "cost": 1.0},
+        ToolName.ENTITY_LOOKUP: {"latency": 80.0, "cost": 0.5},
+        ToolName.FEATURE_ENGINEERING: {"latency": 300.0, "cost": 3.0},
+        ToolName.DETECTION: {"latency": 450.0, "cost": 4.0},
+        ToolName.SCORING: {"latency": 50.0, "cost": 1.0},
+        ToolName.EXPLANATION: {"latency": 800.0, "cost": 5.0},
+        ToolName.REPORTING: {"latency": 10.0, "cost": 0.1},
+    }
+
+    @classmethod
+    def optimize_plan(cls, plan: ExecutionPlan, registry: ToolRegistry = None) -> ExecutionPlan:
+        """Analyze the plan, estimate cost and latency, and potentially prune redundant or unavailable steps."""
+        total_latency = 0.0
+        total_cost = 0.0
+        
+        valid_steps = []
+        for step in plan.steps:
+            if registry and step.tool_name in registry._tools:
+                health = registry._tools[step.tool_name].metadata.health_status
+                if health == "unavailable":
+                    logger.warning("Tool {tool} is unavailable, removing from plan", tool=step.tool_name)
+                    plan.tools_skipped.append(step.tool_name)
+                    plan.skip_reasons[str(step.tool_name)] = "Tool is unavailable"
+                    continue
+            
+            valid_steps.append(step)
+            metrics = cls.TOOL_METRICS.get(step.tool_name, {"latency": 100.0, "cost": 1.0})
+            total_latency += metrics["latency"]
+            total_cost += metrics["cost"]
+            
+        plan.steps = valid_steps
+        plan.estimated_latency_ms = total_latency
+        plan.estimated_cost = total_cost
+        
+        logger.debug(
+            "Plan optimizer complete. Estimated latency: {lat}ms, cost: {cost}",
+            lat=total_latency,
+            cost=total_cost
+        )
+        return plan

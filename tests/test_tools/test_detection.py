@@ -12,7 +12,7 @@ import numpy as np
 from unittest.mock import MagicMock
 
 from core.config import AppConfig
-from tools.detection.ensemble import combine_signals
+from tools.detection.ensemble import OrGateStrategy
 from tools.detection.hbos_scorer import fit_predict_hbos_anomalies
 from tools.detection.ml_scorer import fit_predict_ml_anomalies
 
@@ -123,18 +123,19 @@ class TestHBOSScorer:
 
 class TestEnsembleCombiner:
     config = _make_config()
+    strategy = OrGateStrategy()
 
     def test_or_gate_with_rule_only(self):
         rule_results = {1: ["R_STRUCT_01"]}
         ml_results = {1: {"ml_anomaly_score": 0.0, "is_ml_anomalous": False, "iforest_flagged": False, "lof_flagged": False, "hbos_flagged": False}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert results[1]["is_flagged"] is True
         assert "R_STRUCT_01" in results[1]["triggered_signals"]
 
     def test_or_gate_with_ml_only(self):
         rule_results = {2: []}
         ml_results = {2: {"ml_anomaly_score": 0.95, "is_ml_anomalous": True, "iforest_flagged": True, "lof_flagged": False, "hbos_flagged": True}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert results[2]["is_flagged"] is True
         assert "ML_IFOREST" in results[2]["triggered_signals"]
         assert "ML_HBOS" in results[2]["triggered_signals"]
@@ -143,14 +144,14 @@ class TestEnsembleCombiner:
     def test_not_flagged_when_all_clean(self):
         rule_results = {3: []}
         ml_results = {3: {"ml_anomaly_score": 0.02, "is_ml_anomalous": False, "iforest_flagged": False, "lof_flagged": False, "hbos_flagged": False}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert results[3]["is_flagged"] is False
         assert results[3]["confidence"] == 0.0
 
     def test_signal_deduplication(self):
         rule_results = {4: ["R_STRUCT_01", "R_STRUCT_02"]}
         ml_results = {4: {"ml_anomaly_score": 0.95, "is_ml_anomalous": True, "iforest_flagged": True, "lof_flagged": True, "hbos_flagged": True}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         # ML_ANOMALY appears once, not multiple times
         signals = results[4]["triggered_signals"]
         assert signals.count("ML_ANOMALY") == 1
@@ -159,7 +160,7 @@ class TestEnsembleCombiner:
         """Accounts appearing only in rule_results should still be in output."""
         rule_results = {5: ["R_VELOCITY_01"]}
         ml_results = {}  # account 5 not in ml_results
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert 5 in results
         assert results[5]["is_flagged"] is True
 
@@ -167,12 +168,12 @@ class TestEnsembleCombiner:
         """Accounts appearing only in ml_results should still be in output."""
         rule_results = {}
         ml_results = {6: {"ml_anomaly_score": 0.9, "is_ml_anomalous": True, "iforest_flagged": True, "lof_flagged": False, "hbos_flagged": False}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert 6 in results
         assert results[6]["is_flagged"] is True
 
     def test_confidence_bounded_to_1(self):
         rule_results = {7: ["R_STRUCT_01", "R_SMURF_01", "R_LAYER_01", "R_CASHOUT_01", "R_VELOCITY_01"]}
         ml_results = {7: {"ml_anomaly_score": 0.99, "is_ml_anomalous": True, "iforest_flagged": True, "lof_flagged": True, "hbos_flagged": True}}
-        results = combine_signals(rule_results, ml_results, self.config)
+        results = self.strategy.combine_signals(rule_results, ml_results, self.config)
         assert results[7]["confidence"] <= 1.0

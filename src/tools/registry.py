@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from loguru import logger
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field
 
 from core.config import AppConfig
 from core.logging import log_tool_execution
@@ -41,6 +41,23 @@ class ToolValidationError(Exception):
         super().__init__(f"Validation failed for tool '{tool_name}': {details}")
 
 
+from enum import Enum
+from core.types import IntentType, ToolName
+
+class ToolHealth(str, Enum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+class ToolMetadata(BaseModel):
+    supported_intents: list[IntentType] = Field(default_factory=list)
+    estimated_latency_ms: float = 100.0
+    estimated_cost: float = 1.0
+    cacheable: bool = False
+    deterministic: bool = True
+    dependencies: list[ToolName] = Field(default_factory=list)
+    health_status: ToolHealth = ToolHealth.HEALTHY
+
 class ToolSpec(BaseModel):
     """Specification for a registered tool.
 
@@ -50,6 +67,7 @@ class ToolSpec(BaseModel):
         input_schema: Pydantic model class defining the tool's expected input shape.
         output_schema: Pydantic model class defining the tool's output shape (ToolResult by default).
         callable: The function or method that executes the tool logic.
+        metadata: Capabilities, costs, dependencies, and health.
             Signature: (input, config, db_client, query_id, step_id) -> ToolResult
     """
 
@@ -58,6 +76,7 @@ class ToolSpec(BaseModel):
     input_schema: Any  # type[BaseModel] — stored as Any to avoid Pydantic serialization issues
     output_schema: Any = ToolResult
     callable: Any  # Callable[..., ToolResult]
+    metadata: ToolMetadata = Field(default_factory=ToolMetadata)
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -115,6 +134,23 @@ class ToolRegistry:
         """Return all registered tools (useful for LLM context injection in Phase 3)."""
         return list(self._tools.values())
 
+    def check_health(self) -> None:
+        """Ping dependencies or check internal states to update health status of all tools."""
+        for name, spec in self._tools.items():
+            # In a real app this would ping specific services (DBs, LLM endpoints)
+            # For now, we simulate health checks.
+            # E.g. Explanation tool degrades if LLM client is failing (not implemented yet).
+            # Default to HEALTHY.
+            spec.metadata.health_status = ToolHealth.HEALTHY
+
+    def get_available_tools_for_intent(self, intent: IntentType) -> list[ToolSpec]:
+        """Return tools that support the given intent and are healthy."""
+        self.check_health()
+        return [
+            spec for spec in self._tools.values()
+            if intent in spec.metadata.supported_intents and spec.metadata.health_status == ToolHealth.HEALTHY
+        ]
+
     def get_langchain_tools(
         self,
         config: AppConfig,
@@ -138,6 +174,7 @@ class ToolRegistry:
         db_client: DuckDBClient,
         query_id: str,
         step_id: int,
+        completed_tools: list[ToolName] | None = None,
     ) -> ToolResult:
         """Validate input args, execute the tool, capture timing and audit.
 
@@ -175,6 +212,22 @@ class ToolRegistry:
                 tool_name=name, step_id=step_id, status="error",
                 error_summary=f"Tool '{name}' not found in registry",
             )
+
+        # Enforce Dependencies
+        if completed_tools is not None and spec.metadata.dependencies:
+            missing = [dep.value for dep in spec.metadata.dependencies if dep not in completed_tools]
+            if missing:
+                error_msg = f"Missing dependencies for {name}: {', '.join(missing)}. Please call them first."
+                ended_at_iso = datetime.now(timezone.utc).isoformat()
+                _log_execution(
+                    query_id, str(name), step_id, started_at_iso, ended_at_iso,
+                    0.0, 0, 0, config.config_version, "error",
+                    error_summary=error_msg,
+                )
+                return ToolResult(
+                    tool_name=name, step_id=step_id, status="error",
+                    error_summary=error_msg,
+                )
 
         # Validate input args against declared schema
         try:
@@ -268,14 +321,54 @@ def build_default_tool_registry() -> ToolRegistry:
     from tools.entity_lookup.tool import execute_entity_lookup, EntityLookupInput
 
     registry = ToolRegistry()
-    registry.register(ToolSpec(name=ToolName.DATA_QUERY, description="DuckDB-backed direct aggregations and filtered lookups", input_schema=DataQueryInput, callable=execute_data_query))
-    registry.register(ToolSpec(name=ToolName.EDA, description="Exploratory data analysis, profiles, and visual charts", input_schema=EDAInput, callable=execute_eda))
-    registry.register(ToolSpec(name=ToolName.FEATURE_ENGINEERING, description="Computes AML feature families", input_schema=FeatureInput, callable=execute_feature_engineering))
-    registry.register(ToolSpec(name=ToolName.DETECTION, description="Rule engine + ML anomaly detection ensemble", input_schema=DetectionInput, callable=execute_detection))
-    registry.register(ToolSpec(name=ToolName.SCORING, description="Composite risk scoring and risk band classification", input_schema=ScoringInput, callable=execute_scoring))
-    registry.register(ToolSpec(name=ToolName.EXPLANATION, description="Grounded natural language compliance explanations", input_schema=ExplanationInput, callable=execute_explanation))
-    registry.register(ToolSpec(name=ToolName.REPORTING, description="Final AgentResponse payload assembly", input_schema=ReportingInput, callable=execute_reporting))
-    registry.register(ToolSpec(name=ToolName.ENTITY_LOOKUP, description="Single entity lookup for account metadata, alerts, and risk assessments", input_schema=EntityLookupInput, callable=execute_entity_lookup))
+    
+    registry.register(ToolSpec(
+        name=ToolName.DATA_QUERY, description="DuckDB-backed direct aggregations and filtered lookups",
+        input_schema=DataQueryInput, callable=execute_data_query,
+        metadata=ToolMetadata(supported_intents=[IntentType.AGGREGATION_QUERY], estimated_cost=0.5, dependencies=[])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.EDA, description="Exploratory data analysis, profiles, and visual charts",
+        input_schema=EDAInput, callable=execute_eda,
+        metadata=ToolMetadata(supported_intents=[IntentType.BROAD_EDA], estimated_cost=1.0, dependencies=[])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.FEATURE_ENGINEERING, description="Computes AML feature families",
+        input_schema=FeatureInput, callable=execute_feature_engineering,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.RISK_SCORING_BATCH], estimated_cost=3.0, dependencies=[])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.DETECTION, description="Rule engine + ML anomaly detection ensemble",
+        input_schema=DetectionInput, callable=execute_detection,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.RISK_SCORING_BATCH], estimated_cost=4.0, dependencies=[ToolName.FEATURE_ENGINEERING])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.SCORING, description="Composite risk scoring and risk band classification",
+        input_schema=ScoringInput, callable=execute_scoring,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.RISK_SCORING_BATCH], estimated_cost=1.0, dependencies=[ToolName.DETECTION])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.EXPLANATION, description="Grounded natural language compliance explanations",
+        input_schema=ExplanationInput, callable=execute_explanation,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.RISK_SCORING_BATCH, IntentType.ENTITY_LOOKUP], estimated_cost=5.0, dependencies=[])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.REPORTING, description="Final AgentResponse payload assembly",
+        input_schema=ReportingInput, callable=execute_reporting,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.AGGREGATION_QUERY, IntentType.BROAD_EDA, IntentType.RISK_SCORING_BATCH, IntentType.ENTITY_LOOKUP], estimated_cost=0.1, dependencies=[])
+    ))
+    registry.register(ToolSpec(
+        name=ToolName.ENTITY_LOOKUP, description="Single entity lookup for account metadata, alerts, and risk assessments",
+        input_schema=EntityLookupInput, callable=execute_entity_lookup,
+        metadata=ToolMetadata(supported_intents=[IntentType.ENTITY_LOOKUP], estimated_cost=0.5, dependencies=[])
+    ))
+    
+    from tools.investigation.tool import execute_investigation, InvestigationInput
+    registry.register(ToolSpec(
+        name=ToolName.INVESTIGATION, description="Multi-hop graph analysis for entity connectivity",
+        input_schema=InvestigationInput, callable=execute_investigation,
+        metadata=ToolMetadata(supported_intents=[IntentType.PATTERN_SEARCH, IntentType.ENTITY_LOOKUP], estimated_cost=5.0, dependencies=[])
+    ))
 
     return registry
 

@@ -90,7 +90,7 @@ def test_agent_graph_execution(mock_registry, tmp_path):
         "raw_query": "Find structuring patterns in the last 30 days",
     }
 
-    final_state = graph.invoke(initial_state)
+    final_state = graph.invoke(initial_state, config={"configurable": {"thread_id": "test"}})
     assert final_state["query_spec"] is not None
     assert final_state["execution_plan"] is not None
     assert len(final_state["tool_results"]) > 0
@@ -201,7 +201,7 @@ def test_agent_graph_executes_terminal_tools_once(tmp_path):
         llm_client=llm_client,
     )
 
-    final_state = graph.invoke({"raw_query": "Find structuring patterns in the last 30 days"})
+    final_state = graph.invoke({"raw_query": "Find structuring patterns in the last 30 days"}, config={"configurable": {"thread_id": "test"}})
 
     assert call_counts[ToolName.EXPLANATION] == 1
     assert call_counts[ToolName.REPORTING] == 1
